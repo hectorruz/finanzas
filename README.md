@@ -111,6 +111,22 @@ requiere conexión a internet en el dispositivo.
 
 ---
 
+## 🚀 CI: compilar la APK y publicar Releases
+
+El workflow `.github/workflows/build-apk.yml` compila la APK de release en CI
+(genera `android/` con `flutter create`, ejecuta `build_runner` y `flutter
+build apk`). Como la APK se firma con la clave de depuración por defecto del
+template de Flutter, sirve para pruebas; para distribución firma con tu propio
+keystore.
+
+- **Lanzamiento manual**: pestaña *Actions* → *Build APK* → *Run workflow*. La
+  APK queda como artefacto descargable.
+- **Publicar una Release**: crea y empuja un tag `v*`, p. ej.:
+  ```bash
+  git tag v0.1.0 && git push origin v0.1.0
+  ```
+  El workflow adjuntará la APK a una Release de GitHub con notas automáticas.
+
 ## 🔒 Datos y privacidad
 - Todos los datos son **locales** (Isar). No hay backend.
 - El OCR de tickets se ejecuta **on-device** (ML Kit), sin enviar imágenes a la nube.
