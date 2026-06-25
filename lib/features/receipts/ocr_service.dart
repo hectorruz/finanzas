@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:intl/intl.dart';
@@ -28,9 +30,20 @@ class OcrService {
       TextRecognizer(script: TextRecognitionScript.latin);
 
   Future<ParsedReceipt> processImage(String imagePath) async {
-    final input = InputImage.fromFilePath(imagePath);
-    final recognized = await _recognizer.processImage(input);
-    final text = recognized.text;
+    if (!File(imagePath).existsSync()) {
+      throw const FileSystemException('No se encontró la imagen del ticket.');
+    }
+    final String text;
+    try {
+      final input = InputImage.fromFilePath(imagePath);
+      final recognized = await _recognizer.processImage(input);
+      text = recognized.text;
+    } catch (e) {
+      throw Exception(
+        'No se pudo reconocer el texto del ticket. Comprueba que el modelo de '
+        'OCR está disponible y vuelve a intentarlo. ($e)',
+      );
+    }
     final lines = text
         .split('\n')
         .map((l) => l.trim())

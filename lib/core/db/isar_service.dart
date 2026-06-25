@@ -1,5 +1,5 @@
 import 'package:isar_community/isar.dart';
-import 'package:isar_community_flutter_libs/isar_community_flutter_libs.dart';
+import 'package:isar_community_flutter_libs/isar_flutter_libs.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../data/models/account.dart';

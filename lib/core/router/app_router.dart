@@ -81,8 +81,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: Routes.holdingDetail,
-        builder: (_, state) =>
-            HoldingDetailScreen(holdingId: _intExtra(state)!),
+        builder: (_, state) {
+          final id = _intExtra(state);
+          if (id == null) return const HomeShell();
+          return HoldingDetailScreen(holdingId: id);
+        },
       ),
       GoRoute(
         path: Routes.dashboardConfig,
