@@ -1,0 +1,78 @@
+name: Build APK
+
+# Compila la APK de release y, al publicar un tag "v*", la adjunta a una Release.
+# También se puede lanzar manualmente desde la pestaña Actions (sube la APK como
+# artefacto descargable).
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generar la carpeta android/
+        # El repo no versiona la plataforma; se genera aquí con la versión de
+        # Flutter del runner. --org fija el applicationId a com.hectorruz.finanzas.
+        run: flutter create . --org com.hectorruz --platforms=android --project-name finanzas
+
+      - name: Ajustar AndroidManifest para OCR (cámara + ML Kit)
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q "android.permission.CAMERA" "$MANIFEST"; then
+            sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' "$MANIFEST"
+          fi
+          if ! grep -q "com.google.mlkit.vision.DEPENDENCIES" "$MANIFEST"; then
+            sed -i 's#</application>#    <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="ocr" />\n    </application>#' "$MANIFEST"
+          fi
+          echo "----- AndroidManifest.xml -----"
+          cat "$MANIFEST"
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Generar código de Isar (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Compilar APK de release
+        run: flutter build apk --release
+
+      - name: Renombrar APK
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/finanzas-${{ github.ref_type == 'tag' && github.ref_name || github.sha }}.apk
+          ls -lh dist
+
+      - name: Subir APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: finanzas-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Publicar en Releases (solo en tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          generate_release_notes: true
