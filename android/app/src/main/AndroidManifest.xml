@@ -29,6 +29,17 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Tile de Ajustes rápidos: registra un movimiento de un toque -->
+        <service
+            android:name=".QuickAddTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_qs_movement"
+            android:label="Nuevo movimiento"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
         <!-- Descarga del modelo OCR de ML Kit al instalar -->
         <meta-data
             android:name="com.google.mlkit.vision.DEPENDENCIES"

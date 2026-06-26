@@ -3,15 +3,39 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/platform/quick_tile.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/settings_repository.dart';
 
-class FinanzasApp extends ConsumerWidget {
+class FinanzasApp extends ConsumerStatefulWidget {
   const FinanzasApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FinanzasApp> createState() => _FinanzasAppState();
+}
+
+class _FinanzasAppState extends ConsumerState<FinanzasApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Acciones recibidas con la app ya abierta (tile vía onNewIntent).
+    QuickTile.setActionHandler(_handleQuickAction);
+    // Acción del arranque en frío, una vez montado el router.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final action = await QuickTile.getInitialAction();
+      if (action != null) _handleQuickAction(action);
+    });
+  }
+
+  void _handleQuickAction(String action) {
+    if (action == QuickTile.newMovement) {
+      ref.read(routerProvider).push(Routes.movementEditor);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final settings = ref.watch(currentSettingsProvider);
     final themeMode = ref.watch(themeModeProvider);
