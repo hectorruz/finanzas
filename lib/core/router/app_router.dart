@@ -11,6 +11,7 @@ import '../../features/movements/movement_editor_screen.dart';
 import '../../features/movements/recurring_editor_screen.dart';
 import '../../features/movements/recurring_screen.dart';
 import '../../features/receipts/receipt_scan_screen.dart';
+import '../../features/reports/report_screen.dart';
 import '../../features/settings/dashboard_config_screen.dart';
 
 /// Rutas con nombre de la app.
@@ -24,6 +25,7 @@ class Routes {
   static const recurringEditor = '/recurring/edit';
   static const receiptScan = '/receipt/scan';
   static const dashboardConfig = '/settings/dashboard';
+  static const reports = '/reports';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -73,6 +75,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.dashboardConfig,
         builder: (_, __) => const DashboardConfigScreen(),
+      ),
+      GoRoute(
+        path: Routes.reports,
+        builder: (_, __) => const ReportScreen(),
       ),
     ],
   );

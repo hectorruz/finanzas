@@ -118,6 +118,12 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
           const _SectionHeader('Datos'),
           ListTile(
+            leading: const Icon(Icons.summarize),
+            title: const Text('Generar informe'),
+            subtitle: const Text('PDF o Excel de un tramo de fechas'),
+            onTap: () => context.push(Routes.reports),
+          ),
+          ListTile(
             leading: const Icon(Icons.upload_file),
             title: const Text('Exportar datos'),
             subtitle: const Text('Genera una copia en JSON'),
