@@ -7,8 +7,6 @@ import '../../features/accounts/account_editor_screen.dart';
 import '../../features/accounts/accounts_screen.dart';
 import '../../features/categories/categories_screen.dart';
 import '../../features/home_shell.dart';
-import '../../features/investments/holding_editor_screen.dart';
-import '../../features/investments/holding_detail_screen.dart';
 import '../../features/movements/movement_editor_screen.dart';
 import '../../features/movements/recurring_editor_screen.dart';
 import '../../features/movements/recurring_screen.dart';
@@ -25,8 +23,6 @@ class Routes {
   static const recurring = '/recurring';
   static const recurringEditor = '/recurring/edit';
   static const receiptScan = '/receipt/scan';
-  static const holdingEditor = '/holding';
-  static const holdingDetail = '/holding/detail';
   static const dashboardConfig = '/settings/dashboard';
 }
 
@@ -73,19 +69,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.receiptScan,
         builder: (_, __) => const ReceiptScanScreen(),
-      ),
-      GoRoute(
-        path: Routes.holdingEditor,
-        builder: (_, state) =>
-            HoldingEditorScreen(holdingId: _intExtra(state)),
-      ),
-      GoRoute(
-        path: Routes.holdingDetail,
-        builder: (_, state) {
-          final id = _intExtra(state);
-          if (id == null) return const HomeShell();
-          return HoldingDetailScreen(holdingId: id);
-        },
       ),
       GoRoute(
         path: Routes.dashboardConfig,

@@ -46,10 +46,6 @@ class AppSettings {
   @ignore
   bool get goalsEnabled => enabledModules.contains(AppModule.goals.name);
 
-  @ignore
-  bool get investmentsEnabled =>
-      enabledModules.contains(AppModule.investments.name);
-
   /// Lista de tarjetas parseada de forma segura (descarta nombres desconocidos).
   @ignore
   List<DashboardCardType> get cards {

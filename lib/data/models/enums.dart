@@ -5,7 +5,7 @@
 /// añaden valores en el futuro. El parseo seguro desde texto se hace con
 /// [enumByName], que aplica un fallback en lugar de lanzar excepción.
 
-enum AccountType { bank, cash, investment }
+enum AccountType { bank, cash }
 
 enum TransactionType { income, expense, transfer }
 
@@ -13,7 +13,7 @@ enum CategoryKind { income, expense }
 
 enum RecurringFrequency { daily, weekly, monthly, yearly }
 
-enum AppModule { investments, goals }
+enum AppModule { goals }
 
 /// Tarjetas disponibles en el dashboard configurable.
 enum DashboardCardType {

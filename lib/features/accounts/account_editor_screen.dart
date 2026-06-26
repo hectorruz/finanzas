@@ -137,9 +137,6 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
                           value: AccountType.bank, child: Text('Banco')),
                       DropdownMenuItem(
                           value: AccountType.cash, child: Text('Efectivo')),
-                      DropdownMenuItem(
-                          value: AccountType.investment,
-                          child: Text('Inversiones')),
                     ],
                     onChanged: (v) => setState(() => _type = v ?? _type),
                   ),

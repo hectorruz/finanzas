@@ -6,7 +6,6 @@ import '../../data/models/account.dart';
 import '../../data/models/app_settings.dart';
 import '../../data/models/category.dart';
 import '../../data/models/goal.dart';
-import '../../data/models/holding.dart';
 import '../../data/models/receipt.dart';
 import '../../data/models/recurring_rule.dart';
 import '../../data/models/transaction.dart';
@@ -18,7 +17,6 @@ const List<CollectionSchema<dynamic>> kIsarSchemas = [
   CategorySchema,
   RecurringRuleSchema,
   ReceiptSchema,
-  HoldingSchema,
   GoalSchema,
   AppSettingsSchema,
 ];

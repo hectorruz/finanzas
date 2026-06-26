@@ -73,14 +73,6 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
           const _SectionHeader('Módulos'),
           SwitchListTile(
-            secondary: const Icon(Icons.trending_up),
-            title: const Text('Inversiones'),
-            value: settings.investmentsEnabled,
-            onChanged: (v) => repo.update((s) {
-              _toggleModule(s, AppModule.investments, v);
-            }),
-          ),
-          SwitchListTile(
             secondary: const Icon(Icons.flag),
             title: const Text('Objetivos'),
             value: settings.goalsEnabled,

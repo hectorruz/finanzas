@@ -5,8 +5,7 @@ import 'models/category.dart';
 import 'models/enums.dart';
 
 /// Crea los datos por defecto la primera vez que se abre la app: cuentas
-/// "Banco" y "Efectivo" (el contenedor de Inversiones queda desactivado vía
-/// el módulo en ajustes) y un conjunto de categorías editables.
+/// "Banco" y "Efectivo" y un conjunto de categorías editables.
 class SeedService {
   SeedService(this._isar);
   final Isar _isar;
@@ -56,7 +55,6 @@ class SeedService {
     const incomes = <(String, String, int)>[
       ('Sueldo', 'work', 0xFF66BB6A),
       ('Regalos', 'card_giftcard', 0xFFEC407A),
-      ('Inversiones', 'trending_up', 0xFF26C6DA),
       ('Otros ingresos', 'more_horiz', 0xFF9CCC65),
     ];
 

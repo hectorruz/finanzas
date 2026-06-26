@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/repositories/settings_repository.dart';
 import 'dashboard/dashboard_screen.dart';
-import 'investments/investments_screen.dart';
 import 'movements/movements_screen.dart';
 import 'receipts/receipts_screen.dart';
 import 'settings/settings_screen.dart';
 
-/// Contenedor principal con barra inferior de navegación. La pestaña de
-/// Inversiones aparece solo si el módulo está activo en ajustes.
+/// Contenedor principal con barra inferior de navegación.
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -22,9 +19,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(currentSettingsProvider);
-    final investments = settings.investmentsEnabled;
-
     final tabs = <_Tab>[
       const _Tab(
         screen: DashboardScreen(),
@@ -50,15 +44,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           label: 'Tickets',
         ),
       ),
-      if (investments)
-        const _Tab(
-          screen: InvestmentsScreen(),
-          destination: NavigationDestination(
-            icon: Icon(Icons.trending_up_outlined),
-            selectedIcon: Icon(Icons.trending_up),
-            label: 'Inversiones',
-          ),
-        ),
       const _Tab(
         screen: SettingsScreen(),
         destination: NavigationDestination(

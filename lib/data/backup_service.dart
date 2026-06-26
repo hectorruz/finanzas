@@ -11,7 +11,6 @@ import 'models/app_settings.dart';
 import 'models/category.dart';
 import 'models/enums.dart';
 import 'models/goal.dart';
-import 'models/holding.dart';
 import 'models/receipt.dart';
 import 'models/recurring_rule.dart';
 import 'models/transaction.dart';
@@ -43,9 +42,6 @@ class BackupService {
       'receipts': (await _isar.receipts.where().findAll())
           .map(_receiptToMap)
           .toList(),
-      'holdings': (await _isar.holdings.where().findAll())
-          .map(_holdingToMap)
-          .toList(),
       'goals':
           (await _isar.goals.where().findAll()).map(_goalToMap).toList(),
       'settings': _settingsToMap(await _isar.settings.get(0)),
@@ -72,7 +68,6 @@ class BackupService {
       await _isar.transactions.clear();
       await _isar.recurringRules.clear();
       await _isar.receipts.clear();
-      await _isar.holdings.clear();
       await _isar.goals.clear();
 
       await _isar.accounts.putAll(
@@ -85,8 +80,6 @@ class BackupService {
           _list(data['recurringRules']).map(_recurringFromMap).toList());
       await _isar.receipts.putAll(
           _list(data['receipts']).map(_receiptFromMap).toList());
-      await _isar.holdings.putAll(
-          _list(data['holdings']).map(_holdingFromMap).toList());
       await _isar.goals
           .putAll(_list(data['goals']).map(_goalFromMap).toList());
 
@@ -105,7 +98,6 @@ class BackupService {
       await _isar.transactions.clear();
       await _isar.recurringRules.clear();
       await _isar.receipts.clear();
-      await _isar.holdings.clear();
       await _isar.goals.clear();
       await _isar.settings.clear();
     });
@@ -244,33 +236,6 @@ class BackupService {
     ..rawText = m['rawText'] as String? ?? ''
     ..categoryId = m['categoryId'] as int?
     ..transactionId = m['transactionId'] as int?;
-
-  Map<String, dynamic> _holdingToMap(Holding h) => {
-        'id': h.id,
-        'ticker': h.ticker,
-        'name': h.name,
-        'quantityScaled': h.quantityScaled,
-        'buyPriceCents': h.buyPriceCents,
-        'buyCurrency': h.buyCurrency,
-        'sellPriceCents': h.sellPriceCents,
-        'sellCurrency': h.sellCurrency,
-        'purchaseDate': h.purchaseDate.toIso8601String(),
-        'sellDate': h.sellDate?.toIso8601String(),
-      };
-
-  Holding _holdingFromMap(Map<String, dynamic> m) => Holding()
-    ..id = m['id'] as int
-    ..ticker = m['ticker'] as String? ?? ''
-    ..name = m['name'] as String? ?? ''
-    ..quantityScaled = m['quantityScaled'] as int? ?? 0
-    ..buyPriceCents = m['buyPriceCents'] as int? ?? 0
-    ..buyCurrency = m['buyCurrency'] as String? ?? 'EUR'
-    ..sellPriceCents = m['sellPriceCents'] as int?
-    ..sellCurrency = m['sellCurrency'] as String?
-    ..purchaseDate = DateTime.parse(m['purchaseDate'] as String)
-    ..sellDate = m['sellDate'] == null
-        ? null
-        : DateTime.parse(m['sellDate'] as String);
 
   Map<String, dynamic> _goalToMap(Goal g) => {
         'id': g.id,
