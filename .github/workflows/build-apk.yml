@@ -36,15 +36,16 @@ jobs:
         # Flutter del runner. --org fija el applicationId a com.hectorruz.finanzas.
         run: flutter create . --org com.hectorruz --platforms=android --project-name finanzas
 
-      - name: Ajustar AndroidManifest para OCR (cámara + ML Kit)
+      - name: Ajustar AndroidManifest para OCR (permiso de cámara)
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if ! grep -q "android.permission.CAMERA" "$MANIFEST"; then
             sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' "$MANIFEST"
           fi
-          if ! grep -q "com.google.mlkit.vision.DEPENDENCIES" "$MANIFEST"; then
-            sed -i 's#</application>#    <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="ocr" />\n    </application>#' "$MANIFEST"
-          fi
+          # Nota: NO se añade la meta-data com.google.mlkit.vision.DEPENDENCIES.
+          # google_mlkit_text_recognition empaqueta el modelo Latin en la APK; forzar
+          # la descarga vía Play Services provoca un NullPointerException interno de
+          # ML Kit en dispositivos sin ese módulo disponible.
           echo "----- AndroidManifest.xml -----"
           cat "$MANIFEST"
 
