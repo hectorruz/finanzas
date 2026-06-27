@@ -121,33 +121,11 @@ class SettingsScreen extends ConsumerWidget {
           SwitchListTile(
             secondary: const Icon(Icons.lock_outline),
             title: const Text('Bloqueo de la app'),
-            subtitle: const Text('Pide PIN al abrir o volver a la app'),
-            value: settings.appLockConfigured,
+            subtitle: const Text(
+                'Pide tu huella o el PIN del teléfono al abrir la app'),
+            value: settings.appLockEnabled,
             onChanged: (v) => _toggleAppLock(context, ref, v),
           ),
-          if (settings.appLockConfigured) ...[
-            ListTile(
-              leading: const Icon(Icons.pin),
-              title: const Text('Cambiar PIN'),
-              onTap: () => _changePin(context, ref),
-            ),
-            Consumer(
-              builder: (context, ref, _) {
-                final available = ref.watch(biometricsAvailableProvider);
-                if (available.valueOrNull != true) {
-                  return const SizedBox.shrink();
-                }
-                return SwitchListTile(
-                  secondary: const Icon(Icons.fingerprint),
-                  title: const Text('Desbloqueo con huella'),
-                  subtitle: const Text('Usa la biometría además del PIN'),
-                  value: settings.biometricUnlock,
-                  onChanged: (v) =>
-                      repo.update((s) => s.biometricUnlock = v),
-                );
-              },
-            ),
-          ],
           const Divider(),
           const _SectionHeader('Datos'),
           ListTile(
@@ -227,169 +205,24 @@ class SettingsScreen extends ConsumerWidget {
       BuildContext context, WidgetRef ref, bool enable) async {
     final repo = ref.read(settingsRepositoryProvider);
     final service = ref.read(appLockServiceProvider);
-    if (enable) {
-      final pin = await _pinSetupDialog(context);
-      if (pin == null) return; // cancelado: el switch vuelve a su sitio solo
-      final salt = service.generateSalt();
-      await repo.update((s) {
-        s.appLockEnabled = true;
-        s.pinSalt = salt;
-        s.pinHash = service.hashPin(pin, salt);
-      });
-    } else {
-      // Para desactivar el bloqueo hay que demostrar que se conoce el PIN.
-      final settings = ref.read(currentSettingsProvider);
-      final ok = await _verifyPinDialog(context, service, settings);
-      if (!ok) return;
-      await repo.update((s) {
-        s.appLockEnabled = false;
-        s.biometricUnlock = false;
-        s.pinHash = '';
-        s.pinSalt = '';
-      });
-    }
-  }
 
-  /// Pide el PIN actual y lo verifica. Devuelve `true` si es correcto.
-  Future<bool> _verifyPinDialog(
-    BuildContext context,
-    AppLockService service,
-    AppSettings settings,
-  ) async {
-    final controller = TextEditingController();
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        String? error;
-        return StatefulBuilder(
-          builder: (context, setState) => AlertDialog(
-            title: const Text('Confirma tu PIN'),
-            content: TextField(
-              controller: controller,
-              autofocus: true,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              decoration: InputDecoration(
-                labelText: 'PIN actual',
-                counterText: '',
-                errorText: error,
-              ),
-              onSubmitted: (_) => _submitVerify(
-                  context, controller, service, settings, setState, (e) => error = e),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed: () => _submitVerify(
-                    context, controller, service, settings, setState, (e) => error = e),
-                child: const Text('Aceptar'),
-              ),
-            ],
+    // Activar/desactivar requiere autenticarse con la credencial del
+    // dispositivo (huella o PIN del teléfono).
+    if (enable && !await service.isDeviceSupported()) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Configura una huella o un PIN en los ajustes del teléfono.'),
           ),
         );
-      },
-    );
-    return result ?? false;
-  }
-
-  void _submitVerify(
-    BuildContext context,
-    TextEditingController controller,
-    AppLockService service,
-    AppSettings settings,
-    void Function(void Function()) setState,
-    void Function(String?) setError,
-  ) {
-    if (service.verifyPin(settings, controller.text)) {
-      Navigator.pop(context, true);
-    } else {
-      setState(() => setError('PIN incorrecto'));
+      }
+      return;
     }
-  }
 
-  Future<void> _changePin(BuildContext context, WidgetRef ref) async {
-    final repo = ref.read(settingsRepositoryProvider);
-    final service = ref.read(appLockServiceProvider);
-    final pin = await _pinSetupDialog(context);
-    if (pin == null) return;
-    final salt = service.generateSalt();
-    await repo.update((s) {
-      s.pinSalt = salt;
-      s.pinHash = service.hashPin(pin, salt);
-    });
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PIN actualizado.')),
-      );
-    }
-  }
-
-  /// Pide un PIN de 4 dígitos y su confirmación. Devuelve el PIN o `null`.
-  Future<String?> _pinSetupDialog(BuildContext context) {
-    final firstController = TextEditingController();
-    final secondController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    return showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Configura tu PIN'),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: firstController,
-                  autofocus: true,
-                  obscureText: true,
-                  keyboardType: TextInputType.number,
-                  maxLength: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'PIN (4 dígitos)',
-                    counterText: '',
-                  ),
-                  validator: (v) => (v != null && v.length == 4)
-                      ? null
-                      : 'Introduce 4 dígitos',
-                ),
-                TextFormField(
-                  controller: secondController,
-                  obscureText: true,
-                  keyboardType: TextInputType.number,
-                  maxLength: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Repite el PIN',
-                    counterText: '',
-                  ),
-                  validator: (v) => v == firstController.text
-                      ? null
-                      : 'Los PIN no coinciden',
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) {
-                  Navigator.pop(context, firstController.text);
-                }
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
-        );
-      },
-    );
+    final ok = await service.authenticate();
+    if (!ok) return; // cancelado o fallido: el switch vuelve a su sitio solo
+    await repo.update((s) => s.appLockEnabled = enable);
   }
 
   Future<void> _export(BuildContext context, WidgetRef ref) async {

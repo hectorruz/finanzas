@@ -41,17 +41,9 @@ class AppSettings {
 
   // --- Bloqueo de la app ---
 
-  /// Si está activo, la app pide PIN (o huella) al abrirse / volver de fondo.
+  /// Si está activo, la app pide la credencial del dispositivo (huella, rostro
+  /// o el PIN/patrón/contraseña del teléfono) al abrirse y al volver de fondo.
   bool appLockEnabled = false;
-
-  /// Permitir desbloqueo con biometría además del PIN.
-  bool biometricUnlock = false;
-
-  /// Hash SHA-256 del PIN (nunca se almacena el PIN en claro).
-  String pinHash = '';
-
-  /// Salt aleatorio combinado con el PIN antes de hashear.
-  String pinSalt = '';
 
   AppSettings();
 
@@ -59,10 +51,6 @@ class AppSettings {
 
   @ignore
   bool get goalsEnabled => enabledModules.contains(AppModule.goals.name);
-
-  /// El bloqueo está realmente operativo: activado y con un PIN configurado.
-  @ignore
-  bool get appLockConfigured => appLockEnabled && pinHash.isNotEmpty;
 
   /// Lista de tarjetas parseada de forma segura (descarta nombres desconocidos).
   @ignore
