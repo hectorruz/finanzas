@@ -69,8 +69,8 @@ lib/
     dashboard/       # configurable card grid; AppBar eye toggles the privacy mode
     movements/       # transaction list, filters, batch edit, recurring rules; FAB + small scan-ticket FAB
     receipts/        # OCR scan via ML Kit (on-device)
-    accounts/        # account CRUD (incl. free-text `note`)
-    categories/      # category CRUD with subcategories (Category.parentId)
+    accounts/        # account CRUD with unlimited-depth subaccounts (Account.parentId)
+    categories/      # category CRUD with unlimited-depth subcategories (Category.parentId)
     settings/        # app settings, goals (planning), dashboard config, nav config
     security/        # app lock gate + device-credential auth (local_auth)
     quick_add/       # translucent popup for the Quick Settings tile (own entrypoint)

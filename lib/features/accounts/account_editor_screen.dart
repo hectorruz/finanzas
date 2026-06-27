@@ -8,9 +8,20 @@ import '../../data/repositories/account_repository.dart';
 import '../../shared/widgets/amount_field.dart';
 import '../../shared/widgets/icon_color_picker.dart';
 
-class AccountEditorScreen extends ConsumerStatefulWidget {
-  const AccountEditorScreen({super.key, this.accountId});
+/// Argumentos del editor de cuentas pasados por `extra`. Permite distinguir
+/// entre editar una cuenta existente y crear una subcuenta de otra.
+class AccountEditorArgs {
+  const AccountEditorArgs({this.accountId, this.parentId});
   final int? accountId;
+  final int? parentId;
+}
+
+class AccountEditorScreen extends ConsumerStatefulWidget {
+  const AccountEditorScreen({super.key, this.accountId, this.parentId});
+  final int? accountId;
+
+  /// Cuenta padre cuando se está creando una subcuenta.
+  final int? parentId;
 
   @override
   ConsumerState<AccountEditorScreen> createState() =>
@@ -71,7 +82,8 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
       ..iconName = _iconName
       ..colorValue = _colorValue
       ..includeInTotal = _includeInTotal
-      ..note = _noteController.text.trim();
+      ..note = _noteController.text.trim()
+      ..parentId = _existing?.parentId ?? widget.parentId;
     await ref.read(accountRepositoryProvider).save(acc);
     if (mounted) Navigator.of(context).pop();
   }
@@ -107,7 +119,9 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_existing == null ? 'Nueva cuenta' : 'Editar cuenta'),
+        title: Text(_existing == null
+            ? (widget.parentId != null ? 'Nueva subcuenta' : 'Nueva cuenta')
+            : 'Editar cuenta'),
         actions: [
           if (_existing != null)
             IconButton(

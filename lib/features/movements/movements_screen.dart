@@ -224,22 +224,16 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             title: const Text('Sin categoría'),
             onTap: () => Navigator.pop(context, -1),
           ),
-          for (final g in groupCategories(categories)) ...[
+          for (final e in flattenCategories(categories))
             ListTile(
+              contentPadding:
+                  EdgeInsets.only(left: 16 + e.depth * 24.0, right: 16),
               leading: Icon(Icons.circle,
-                  color: Color(g.parent.colorValue), size: 16),
-              title: Text(g.parent.name),
-              onTap: () => Navigator.pop(context, g.parent.id),
+                  color: Color(e.value.colorValue),
+                  size: e.depth == 0 ? 16 : 12),
+              title: Text(e.value.name),
+              onTap: () => Navigator.pop(context, e.value.id),
             ),
-            for (final sub in g.children)
-              ListTile(
-                contentPadding: const EdgeInsets.only(left: 40, right: 16),
-                leading: Icon(Icons.circle,
-                    color: Color(sub.colorValue), size: 12),
-                title: Text(sub.name),
-                onTap: () => Navigator.pop(context, sub.id),
-              ),
-          ],
         ],
       ),
     );
@@ -258,11 +252,15 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       builder: (_) => ListView(
         children: [
           const ListTile(title: Text('Mover a la cuenta')),
-          for (final a in accounts)
+          for (final e in flattenAccounts(accounts))
             ListTile(
-              leading: Icon(Icons.circle, color: Color(a.colorValue), size: 16),
-              title: Text(a.name),
-              onTap: () => Navigator.pop(context, a.id),
+              contentPadding:
+                  EdgeInsets.only(left: 16 + e.depth * 24.0, right: 16),
+              leading: Icon(Icons.circle,
+                  color: Color(e.value.colorValue),
+                  size: e.depth == 0 ? 16 : 12),
+              title: Text(e.value.name),
+              onTap: () => Navigator.pop(context, e.value.id),
             ),
         ],
       ),

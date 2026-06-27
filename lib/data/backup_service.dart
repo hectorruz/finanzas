@@ -120,6 +120,7 @@ class BackupService {
         'archived': a.archived,
         'includeInTotal': a.includeInTotal,
         'note': a.note,
+        'parentId': a.parentId,
         'sortOrder': a.sortOrder,
       };
 
@@ -134,6 +135,7 @@ class BackupService {
     ..archived = m['archived'] as bool? ?? false
     ..includeInTotal = m['includeInTotal'] as bool? ?? true
     ..note = m['note'] as String? ?? ''
+    ..parentId = m['parentId'] as int?
     ..sortOrder = m['sortOrder'] as int? ?? 0;
 
   Map<String, dynamic> _categoryToMap(Category c) => {

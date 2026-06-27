@@ -206,10 +206,8 @@ class _QuickAddPopupState extends ConsumerState<QuickAddPopup> {
                           prefixIcon: Icon(Icons.category),
                         ),
                         items: [
-                          for (final g in groupCategories(categories)) ...[
-                            _catItem(g.parent, false),
-                            for (final sub in g.children) _catItem(sub, true),
-                          ],
+                          for (final e in flattenCategories(categories))
+                            _catItem(e.value, e.depth),
                         ],
                         onChanged: (v) => setState(() => _categoryId = v),
                       ),
@@ -233,11 +231,11 @@ class _QuickAddPopupState extends ConsumerState<QuickAddPopup> {
     );
   }
 
-  DropdownMenuItem<int> _catItem(Category c, bool indent) => DropdownMenuItem<int>(
+  DropdownMenuItem<int> _catItem(Category c, int depth) => DropdownMenuItem<int>(
         value: c.id,
         child: Row(
           children: [
-            if (indent) const SizedBox(width: 20),
+            if (depth > 0) SizedBox(width: depth * 20.0),
             Icon(iconByName(c.iconName), size: 18, color: Color(c.colorValue)),
             const SizedBox(width: 8),
             Flexible(child: Text(c.name, overflow: TextOverflow.ellipsis)),

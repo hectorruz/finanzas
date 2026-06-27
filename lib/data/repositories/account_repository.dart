@@ -5,6 +5,7 @@ import '../../core/db/isar_provider.dart';
 import '../models/account.dart';
 import '../models/enums.dart';
 import '../models/transaction.dart';
+import 'tree.dart';
 
 class AccountRepository {
   AccountRepository(this._isar);
@@ -45,8 +46,18 @@ class AccountRepository {
   }
 
   /// Borra una cuenta y todos sus movimientos asociados (origen o destino).
+  /// Sus subcuentas directas se recolocan bajo el padre de la borrada (su
+  /// "abuelo"), conservando el resto del árbol en lugar de quedar huérfanas.
   Future<void> delete(int id) async {
     await _isar.writeTxn(() async {
+      final deleted = await _isar.accounts.get(id);
+      final children =
+          await _isar.accounts.filter().parentIdEqualTo(id).findAll();
+      for (final c in children) {
+        c.parentId = deleted?.parentId;
+      }
+      if (children.isNotEmpty) await _isar.accounts.putAll(children);
+
       final related = await _isar.transactions
           .filter()
           .accountIdEqualTo(id)
@@ -85,6 +96,14 @@ class AccountRepository {
     return total;
   }
 }
+
+/// Aplana las cuentas en un árbol de anidamiento ilimitado (subcuentas dentro
+/// de subcuentas), con la profundidad de cada nodo.
+List<TreeEntry<Account>> flattenAccounts(List<Account> all) => flattenTree(
+      all,
+      idOf: (a) => a.id,
+      parentIdOf: (a) => a.parentId,
+    );
 
 final accountRepositoryProvider = Provider<AccountRepository>(
   (ref) => AccountRepository(ref.watch(isarProvider)),

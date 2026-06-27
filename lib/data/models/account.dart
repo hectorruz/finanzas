@@ -38,8 +38,16 @@ class Account {
   /// Si suma en el cálculo del balance total del dashboard.
   bool includeInTotal = true;
 
+  /// Id de la cuenta padre si es una subcuenta; `null` si es de primer nivel.
+  /// El anidamiento es ilimitado (una subcuenta puede tener subcuentas).
+  int? parentId;
+
   /// Orden de aparición en listados.
   int sortOrder = 0;
 
   Account();
+
+  /// ¿Es una subcuenta (cuelga de otra)?
+  @ignore
+  bool get isSubaccount => parentId != null;
 }

@@ -132,18 +132,18 @@ class _MovementsFilterSheetState extends ConsumerState<MovementsFilterSheet> {
           Wrap(
             spacing: 8,
             children: [
-              for (final g in groupCategories(categories)) ...[
-                for (final c in [g.parent, ...g.children])
-                  FilterChip(
-                    label: Text(c.parentId == null ? c.name : '› ${c.name}'),
-                    selected: _draft.categoryIds.contains(c.id),
-                    onSelected: (sel) => setState(() {
-                      final ids = {..._draft.categoryIds};
-                      sel ? ids.add(c.id) : ids.remove(c.id);
-                      _draft = _draft.copyWith(categoryIds: ids);
-                    }),
-                  ),
-              ],
+              for (final e in flattenCategories(categories))
+                FilterChip(
+                  label: Text(e.depth == 0
+                      ? e.value.name
+                      : '${'› ' * e.depth}${e.value.name}'),
+                  selected: _draft.categoryIds.contains(e.value.id),
+                  onSelected: (sel) => setState(() {
+                    final ids = {..._draft.categoryIds};
+                    sel ? ids.add(e.value.id) : ids.remove(e.value.id);
+                    _draft = _draft.copyWith(categoryIds: ids);
+                  }),
+                ),
             ],
           ),
           const SizedBox(height: 16),

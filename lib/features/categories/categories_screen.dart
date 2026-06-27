@@ -105,50 +105,38 @@ class _CategoryList extends StatelessWidget {
     if (items.isEmpty) {
       return const Center(child: Text('No hay categorías.'));
     }
-    final groups = groupCategories(items);
+    final entries = flattenCategories(items);
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 96),
-      itemCount: groups.length,
+      itemCount: entries.length,
       itemBuilder: (_, i) {
-        final g = groups[i];
-        final c = g.parent;
-        return Column(
-          children: [
-            ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Color(c.colorValue).withOpacity(0.18),
-                child: Icon(iconByName(c.iconName), color: Color(c.colorValue)),
-              ),
-              title: Text(c.name),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Añadir subcategoría',
-                    icon: const Icon(Icons.add),
-                    onPressed: () => onAddSub(c),
-                  ),
-                  const Icon(Icons.chevron_right),
-                ],
-              ),
-              onTap: () => onEdit(c),
+        final entry = entries[i];
+        final c = entry.value;
+        final depth = entry.depth;
+        final isRoot = depth == 0;
+        return Padding(
+          padding: EdgeInsets.only(left: depth * 24.0),
+          child: ListTile(
+            leading: CircleAvatar(
+              radius: isRoot ? 20 : 16,
+              backgroundColor: Color(c.colorValue).withOpacity(0.18),
+              child: Icon(iconByName(c.iconName),
+                  size: isRoot ? 24 : 18, color: Color(c.colorValue)),
             ),
-            for (final sub in g.children)
-              Padding(
-                padding: const EdgeInsets.only(left: 32),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Color(sub.colorValue).withOpacity(0.18),
-                    child: Icon(iconByName(sub.iconName),
-                        size: 18, color: Color(sub.colorValue)),
-                  ),
-                  title: Text(sub.name),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => onEdit(sub),
+            title: Text(c.name),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Añadir subcategoría',
+                  icon: const Icon(Icons.add),
+                  onPressed: () => onAddSub(c),
                 ),
-              ),
-          ],
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+            onTap: () => onEdit(c),
+          ),
         );
       },
     );

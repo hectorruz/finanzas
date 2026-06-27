@@ -54,8 +54,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: Routes.accountEditor,
-        builder: (_, state) =>
-            AccountEditorScreen(accountId: _intExtra(state)),
+        builder: (_, state) {
+          final extra = state.extra;
+          if (extra is AccountEditorArgs) {
+            return AccountEditorScreen(
+              accountId: extra.accountId,
+              parentId: extra.parentId,
+            );
+          }
+          return AccountEditorScreen(accountId: extra is int ? extra : null);
+        },
       ),
       GoRoute(
         path: Routes.categories,
