@@ -1,33 +1,57 @@
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/icons/app_icons.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/models/category.dart';
 import '../../data/models/enums.dart';
 import '../../data/models/transaction.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/category_repository.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/amount_field.dart';
 
 /// App mínima y translúcida para el popup de alta rápida (tile de Android).
 /// No monta la app completa ni el bloqueo: solo un diálogo para ingreso/gasto.
-class QuickAddPopupApp extends StatelessWidget {
+/// Reutiliza el mismo esquema de color/tema que la app (Material You, color
+/// semilla, AMOLED y modo claro/oscuro) leyendo los ajustes guardados.
+class QuickAddPopupApp extends ConsumerWidget {
   const QuickAddPopupApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      color: Colors.transparent,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF2196F3),
-        brightness: MediaQuery.platformBrightnessOf(context),
-        scaffoldBackgroundColor: Colors.transparent,
-      ),
-      home: const QuickAddPopup(),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(currentSettingsProvider);
+    final themeMode = ref.watch(themeModeProvider);
+    final fallbackSeed = Color(settings.seedColorValue);
+
+    return DynamicColorBuilder(
+      builder: (lightDynamic, darkDynamic) {
+        final useDynamic = settings.dynamicColor &&
+            lightDynamic != null &&
+            darkDynamic != null;
+
+        final lightScheme = useDynamic
+            ? lightDynamic
+            : ColorScheme.fromSeed(seedColor: fallbackSeed);
+        final darkScheme = useDynamic
+            ? darkDynamic
+            : ColorScheme.fromSeed(
+                seedColor: fallbackSeed,
+                brightness: Brightness.dark,
+              );
+
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          color: Colors.transparent,
+          themeMode: themeMode,
+          theme: AppTheme.light(lightScheme),
+          darkTheme: AppTheme.dark(darkScheme, amoled: settings.amoled),
+          home: const QuickAddPopup(),
+        );
+      },
     );
   }
 }
