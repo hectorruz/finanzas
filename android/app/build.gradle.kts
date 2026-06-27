@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "com.example.finanzas"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_plugin_android_lifecycle (vía file_picker) exige compileSdk 36+.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
