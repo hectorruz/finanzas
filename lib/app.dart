@@ -7,6 +7,7 @@ import 'core/platform/quick_tile.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/settings_repository.dart';
+import 'features/security/app_lock_gate.dart';
 
 class FinanzasApp extends ConsumerStatefulWidget {
   const FinanzasApp({super.key});
@@ -62,6 +63,8 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp> {
           title: 'Finanzas',
           debugShowCheckedModeBanner: false,
           routerConfig: router,
+          builder: (context, child) =>
+              AppLockGate(child: child ?? const SizedBox.shrink()),
           themeMode: themeMode,
           theme: AppTheme.light(lightScheme),
           darkTheme: AppTheme.dark(darkScheme, amoled: settings.amoled),

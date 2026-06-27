@@ -1,11 +1,12 @@
 package com.example.finanzas
 
 import android.content.Intent
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+// local_auth requiere FlutterFragmentActivity para mostrar el diálogo biométrico.
+class MainActivity : FlutterFragmentActivity() {
 
     /** Acción pendiente entregada por un Quick Settings Tile (arranque en frío). */
     private var pendingAction: String? = null

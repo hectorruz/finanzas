@@ -29,6 +29,10 @@ dependencies:
   # Formateo de números, fechas y divisas
   intl: ^0.20.2
 
+  # Bloqueo de la app: biometría (huella) y hash del PIN
+  local_auth: ^2.3.0
+  crypto: ^3.0.3
+
   # OCR on-device para tickets
   google_mlkit_text_recognition: ^0.13.0
 
