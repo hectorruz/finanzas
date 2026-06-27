@@ -12,6 +12,37 @@ import 'repositories/account_repository.dart';
 /// Granularidad de la sección de evolución del informe.
 enum EvolutionGranularity { weekly, monthly, yearly }
 
+/// Qué flujos de movimientos incluir en el informe.
+enum ReportFlow { income, expense, both }
+
+extension ReportFlowLabel on ReportFlow {
+  String get label => switch (this) {
+        ReportFlow.income => 'Ingresos',
+        ReportFlow.expense => 'Gastos',
+        ReportFlow.both => 'Ambos',
+      };
+
+  /// ¿Debe incluirse un movimiento de este tipo según el flujo seleccionado?
+  bool includes(TransactionType type) => switch (this) {
+        ReportFlow.income => type == TransactionType.income,
+        ReportFlow.expense => type == TransactionType.expense,
+        ReportFlow.both => true,
+      };
+
+  /// ¿El informe muestra la columna/fila de ingresos?
+  bool get showsIncome => this != ReportFlow.expense;
+
+  /// ¿El informe muestra la columna/fila de gastos?
+  bool get showsExpense => this != ReportFlow.income;
+
+  /// Fragmento para el nombre del archivo generado.
+  String get fileSlug => switch (this) {
+        ReportFlow.income => 'ingresos',
+        ReportFlow.expense => 'gastos',
+        ReportFlow.both => 'completo',
+      };
+}
+
 extension EvolutionGranularityLabel on EvolutionGranularity {
   String get label => switch (this) {
         EvolutionGranularity.weekly => 'Semanal',
@@ -29,6 +60,7 @@ class ReportOptions {
     this.balance = true,
     this.evolution = true,
     this.granularity = EvolutionGranularity.monthly,
+    this.flow = ReportFlow.both,
   });
 
   final DateTime from;
@@ -37,6 +69,9 @@ class ReportOptions {
   final bool balance;
   final bool evolution;
   final EvolutionGranularity granularity;
+
+  /// Qué flujos (ingresos/gastos/ambos) entran en el informe.
+  final ReportFlow flow;
 }
 
 /// Una fila de la evolución temporal (un periodo).
@@ -93,10 +128,12 @@ class ReportService {
   final Isar _isar;
 
   Future<ReportData> build(ReportOptions o) async {
-    final txns = await _isar.transactions
-        .filter()
-        .dateBetween(o.from, o.to)
-        .findAll();
+    final txns = (await _isar.transactions
+            .filter()
+            .dateBetween(o.from, o.to)
+            .findAll())
+        .where((t) => o.flow.includes(t.type))
+        .toList();
     txns.sort((a, b) => a.date.compareTo(b.date));
 
     final accounts = await _isar.accounts

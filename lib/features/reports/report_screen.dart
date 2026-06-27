@@ -23,6 +23,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   bool _balance = true;
   bool _evolution = true;
   EvolutionGranularity _granularity = EvolutionGranularity.monthly;
+  ReportFlow _flow = ReportFlow.both;
   bool _busy = false;
 
   @override
@@ -63,6 +64,34 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                   _preset('Este año', _thisYear),
                   _preset('Últimos 12 meses', _last12Months),
                 ],
+              ),
+            ),
+            const Divider(),
+            const _SectionHeader('Tipo de movimiento'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SegmentedButton<ReportFlow>(
+                  segments: const [
+                    ButtonSegment(
+                      value: ReportFlow.income,
+                      label: Text('Ingresos'),
+                      icon: Icon(Icons.south_west),
+                    ),
+                    ButtonSegment(
+                      value: ReportFlow.expense,
+                      label: Text('Gastos'),
+                      icon: Icon(Icons.north_east),
+                    ),
+                    ButtonSegment(
+                      value: ReportFlow.both,
+                      label: Text('Ambos'),
+                    ),
+                  ],
+                  selected: {_flow},
+                  onSelectionChanged: (s) => setState(() => _flow = s.first),
+                ),
               ),
             ),
             const Divider(),
@@ -214,6 +243,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
         balance: _balance,
         evolution: _evolution,
         granularity: _granularity,
+        flow: _flow,
       );
       final data = await ref.read(reportServiceProvider).build(options);
       final file = switch (format) {

@@ -30,20 +30,32 @@ Future<File> buildReportExcel(ReportData data) async {
   if (o.balance) {
     final s = sheetNamed('Balance');
     s.appendRow([TextCellValue('Resumen del periodo')]);
-    s.appendRow([TextCellValue('Ingresos'), DoubleCellValue(_euros(data.totalIncome))]);
-    s.appendRow([TextCellValue('Gastos'), DoubleCellValue(_euros(data.totalExpense))]);
-    s.appendRow([TextCellValue('Neto'), DoubleCellValue(_euros(data.net))]);
-    s.appendRow([]);
-    s.appendRow([TextCellValue('Saldo por cuenta')]);
-    s.appendRow([TextCellValue('Cuenta'), TextCellValue('Saldo actual')]);
-    for (final a in data.accountBalances) {
-      s.appendRow([TextCellValue(a.label), DoubleCellValue(_euros(a.cents))]);
+    if (o.flow.showsIncome) {
+      s.appendRow(
+          [TextCellValue('Ingresos'), DoubleCellValue(_euros(data.totalIncome))]);
     }
-    s.appendRow([]);
-    s.appendRow([TextCellValue('Gasto por categoría')]);
-    s.appendRow([TextCellValue('Categoría'), TextCellValue('Gasto')]);
-    for (final c in data.categoryExpenses) {
-      s.appendRow([TextCellValue(c.label), DoubleCellValue(_euros(c.cents))]);
+    if (o.flow.showsExpense) {
+      s.appendRow(
+          [TextCellValue('Gastos'), DoubleCellValue(_euros(data.totalExpense))]);
+    }
+    if (o.flow == ReportFlow.both) {
+      s.appendRow([TextCellValue('Neto'), DoubleCellValue(_euros(data.net))]);
+    }
+    if (data.accountBalances.isNotEmpty) {
+      s.appendRow([]);
+      s.appendRow([TextCellValue('Saldo por cuenta')]);
+      s.appendRow([TextCellValue('Cuenta'), TextCellValue('Saldo actual')]);
+      for (final a in data.accountBalances) {
+        s.appendRow([TextCellValue(a.label), DoubleCellValue(_euros(a.cents))]);
+      }
+    }
+    if (data.categoryExpenses.isNotEmpty) {
+      s.appendRow([]);
+      s.appendRow([TextCellValue('Gasto por categoría')]);
+      s.appendRow([TextCellValue('Categoría'), TextCellValue('Gasto')]);
+      for (final c in data.categoryExpenses) {
+        s.appendRow([TextCellValue(c.label), DoubleCellValue(_euros(c.cents))]);
+      }
     }
   }
 
@@ -51,16 +63,16 @@ Future<File> buildReportExcel(ReportData data) async {
     final s = sheetNamed('Evolución');
     s.appendRow([
       TextCellValue('Periodo'),
-      TextCellValue('Ingresos'),
-      TextCellValue('Gastos'),
-      TextCellValue('Neto'),
+      if (o.flow.showsIncome) TextCellValue('Ingresos'),
+      if (o.flow.showsExpense) TextCellValue('Gastos'),
+      if (o.flow == ReportFlow.both) TextCellValue('Neto'),
     ]);
     for (final r in data.evolution) {
       s.appendRow([
         TextCellValue(r.label),
-        DoubleCellValue(_euros(r.income)),
-        DoubleCellValue(_euros(r.expense)),
-        DoubleCellValue(_euros(r.net)),
+        if (o.flow.showsIncome) DoubleCellValue(_euros(r.income)),
+        if (o.flow.showsExpense) DoubleCellValue(_euros(r.expense)),
+        if (o.flow == ReportFlow.both) DoubleCellValue(_euros(r.net)),
       ]);
     }
   }
@@ -96,7 +108,7 @@ Future<File> buildReportExcel(ReportData data) async {
 
   final dir = await getTemporaryDirectory();
   final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-  final file = File('${dir.path}/finanzas_informe_$stamp.xlsx');
+  final file = File('${dir.path}/finanzas_informe_${o.flow.fileSlug}_$stamp.xlsx');
   final bytes = excel.encode();
   if (bytes != null) await file.writeAsBytes(bytes);
   return file;

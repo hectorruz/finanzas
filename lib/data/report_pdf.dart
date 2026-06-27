@@ -29,9 +29,9 @@ Future<File> buildReportPdf(ReportData data) async {
   if (o.balance) {
     sections.add(_heading('Balance'));
     sections.add(_kvTable([
-      ['Ingresos', _money(data.totalIncome)],
-      ['Gastos', _money(data.totalExpense)],
-      ['Neto', _signed(data.net)],
+      if (o.flow.showsIncome) ['Ingresos', _money(data.totalIncome)],
+      if (o.flow.showsExpense) ['Gastos', _money(data.totalExpense)],
+      if (o.flow == ReportFlow.both) ['Neto', _signed(data.net)],
     ]));
     if (data.accountBalances.isNotEmpty) {
       sections.add(_subheading('Saldo por cuenta'));
@@ -59,10 +59,20 @@ Future<File> buildReportPdf(ReportData data) async {
   if (o.evolution) {
     sections.add(_heading('Evolución (${o.granularity.label.toLowerCase()})'));
     sections.add(pw.TableHelper.fromTextArray(
-      headers: const ['Periodo', 'Ingresos', 'Gastos', 'Neto'],
+      headers: [
+        'Periodo',
+        if (o.flow.showsIncome) 'Ingresos',
+        if (o.flow.showsExpense) 'Gastos',
+        if (o.flow == ReportFlow.both) 'Neto',
+      ],
       data: [
         for (final r in data.evolution)
-          [r.label, _money(r.income), _money(r.expense), _signed(r.net)],
+          [
+            r.label,
+            if (o.flow.showsIncome) _money(r.income),
+            if (o.flow.showsExpense) _money(r.expense),
+            if (o.flow == ReportFlow.both) _signed(r.net),
+          ],
       ],
       cellAlignments: const {
         1: pw.Alignment.centerRight,
@@ -138,7 +148,7 @@ Future<File> buildReportPdf(ReportData data) async {
 
   final dir = await getTemporaryDirectory();
   final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-  final file = File('${dir.path}/finanzas_informe_$stamp.pdf');
+  final file = File('${dir.path}/finanzas_informe_${o.flow.fileSlug}_$stamp.pdf');
   await file.writeAsBytes(await doc.save());
   return file;
 }
