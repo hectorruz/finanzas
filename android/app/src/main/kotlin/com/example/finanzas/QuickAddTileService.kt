@@ -26,12 +26,12 @@ class QuickAddTileService : TileService() {
     override fun onClick() {
         super.onClick()
 
-        val intent = Intent(this, MainActivity::class.java).apply {
+        // Abre el popup translúcido de alta rápida (no la app completa).
+        val intent = Intent(this, QuickAddActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra(MainActivity.EXTRA_QUICK_ACTION, ACTION_NEW_MOVEMENT)
         }
 
-        // Lanza la app y colapsa el panel de Ajustes rápidos.
+        // Lanza el popup y colapsa el panel de Ajustes rápidos.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val pending = PendingIntent.getActivity(
                 this,
@@ -44,9 +44,5 @@ class QuickAddTileService : TileService() {
             @Suppress("DEPRECATION")
             startActivityAndCollapse(intent)
         }
-    }
-
-    companion object {
-        const val ACTION_NEW_MOVEMENT = "new_movement"
     }
 }

@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/icons/app_icons.dart';
-import '../../core/money/money.dart';
 import '../../core/router/app_router.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/money_text.dart';
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -39,13 +39,15 @@ class AccountsScreen extends ConsumerWidget {
                       color: Color(a.colorValue)),
                 ),
                 title: Text(a.name),
-                subtitle: Text(_typeLabel(a.type.name)),
+                subtitle: Text(a.note.isNotEmpty
+                    ? '${_typeLabel(a.type.name)} · ${a.note}'
+                    : _typeLabel(a.type.name)),
                 trailing: Consumer(
                   builder: (context, ref, _) {
                     final balance = ref.watch(accountBalanceProvider(a.id));
                     return balance.maybeWhen(
-                      data: (c) => Text(
-                        Money(c).format(),
+                      data: (c) => MoneyText(
+                        c,
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       orElse: () => const Text('…'),

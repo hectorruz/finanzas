@@ -7,6 +7,25 @@ import 'core/db/isar_provider.dart';
 import 'core/db/isar_service.dart';
 import 'data/repositories/recurring_repository.dart';
 import 'data/seed_service.dart';
+import 'features/quick_add/quick_add_popup.dart';
+
+/// Entrypoint del popup de alta rápida lanzado por el tile de Ajustes rápidos
+/// (Android `QuickAddActivity`). Abre solo un diálogo translúcido para añadir
+/// un ingreso/gasto, sin montar la app completa ni el bloqueo.
+@pragma('vm:entry-point')
+Future<void> quickAddMain() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('es_ES', null);
+  final isar = await IsarService.open();
+  runApp(
+    ProviderScope(
+      overrides: [
+        isarProvider.overrideWithValue(isar),
+      ],
+      child: const QuickAddPopupApp(),
+    ),
+  );
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

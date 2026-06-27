@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/money/money.dart';
 import '../../core/router/app_router.dart';
-import '../../data/models/enums.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/money_text.dart';
 import 'movements_filter_sheet.dart';
 import 'transaction_tile.dart';
 
@@ -86,12 +85,24 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 ),
               ],
             ),
-      floatingActionButton: _selecting
-          ? null
-          : FloatingActionButton(
-              onPressed: () => context.push(Routes.movementEditor),
-              child: const Icon(Icons.add),
-            ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'scan',
+            tooltip: 'Escanear ticket',
+            onPressed: () => context.push(Routes.receiptScan),
+            child: const Icon(Icons.document_scanner),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'add',
+            tooltip: 'Nuevo movimiento',
+            onPressed: () => context.push(Routes.movementEditor),
+            child: const Icon(Icons.add),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           if (!filter.isEmpty)
@@ -213,12 +224,22 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
             title: const Text('Sin categoría'),
             onTap: () => Navigator.pop(context, -1),
           ),
-          for (final c in categories)
+          for (final g in groupCategories(categories)) ...[
             ListTile(
-              leading: Icon(Icons.circle, color: Color(c.colorValue), size: 16),
-              title: Text(c.name),
-              onTap: () => Navigator.pop(context, c.id),
+              leading: Icon(Icons.circle,
+                  color: Color(g.parent.colorValue), size: 16),
+              title: Text(g.parent.name),
+              onTap: () => Navigator.pop(context, g.parent.id),
             ),
+            for (final sub in g.children)
+              ListTile(
+                contentPadding: const EdgeInsets.only(left: 40, right: 16),
+                leading: Icon(Icons.circle,
+                    color: Color(sub.colorValue), size: 12),
+                title: Text(sub.name),
+                onTap: () => Navigator.pop(context, sub.id),
+              ),
+          ],
         ],
       ),
     );
@@ -269,12 +290,19 @@ class _SummaryBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text('$count movimientos'),
-          Text(
-            'Neto: ${Money(netCents).formatSigned()}',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: netCents < 0 ? scheme.error : Colors.green.shade600,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Neto: ', style: TextStyle(fontWeight: FontWeight.w600)),
+              MoneyText(
+                netCents,
+                signed: true,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: netCents < 0 ? scheme.error : Colors.green.shade600,
+                ),
+              ),
+            ],
           ),
         ],
       ),

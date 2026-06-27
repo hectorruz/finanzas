@@ -72,6 +72,22 @@ class SettingsScreen extends ConsumerWidget {
             onChanged: (v) => repo.update((s) => s.amoled = v),
           ),
           const Divider(),
+          const _SectionHeader('Barra inferior'),
+          SwitchListTile(
+            secondary: const Icon(Icons.label_outline),
+            title: const Text('Mostrar siempre los títulos'),
+            subtitle: const Text('No solo el de la sección seleccionada'),
+            value: settings.alwaysShowNavLabels,
+            onChanged: (v) => repo.update((s) => s.alwaysShowNavLabels = v),
+          ),
+          ListTile(
+            leading: const Icon(Icons.space_dashboard_outlined),
+            title: const Text('Personalizar barra inferior'),
+            subtitle: const Text('Elige y ordena las secciones'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(Routes.navConfig),
+          ),
+          const Divider(),
           const _SectionHeader('Módulos'),
           SwitchListTile(
             secondary: const Icon(Icons.flag),

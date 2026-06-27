@@ -29,6 +29,9 @@ class Account {
   /// Color asociado (valor ARGB de [Color.value]).
   int colorValue = 0xFF2196F3;
 
+  /// Observaciones libres de la cuenta (igual que la nota de un movimiento).
+  String note = '';
+
   /// Si está archivada no se muestra en listados activos pero se conserva.
   bool archived = false;
 

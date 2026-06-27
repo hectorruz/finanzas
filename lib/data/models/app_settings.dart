@@ -39,6 +39,23 @@ class AppSettings {
   /// tengan `includeInTotal`.
   List<int> totalBalanceAccountIds = [];
 
+  // --- Barra inferior ---
+
+  /// Mostrar siempre los títulos de la barra inferior (no solo el seleccionado).
+  bool alwaysShowNavLabels = false;
+
+  /// Ocultar los importes económicos en toda la app (modo privacidad).
+  bool hideAmounts = false;
+
+  /// Secciones visibles de la barra inferior, en orden, por nombre de
+  /// [NavSection]. Ajustes se garantiza siempre presente (ver [sections]).
+  List<String> navSections = [
+    NavSection.dashboard.name,
+    NavSection.movements.name,
+    NavSection.receipts.name,
+    NavSection.settings.name,
+  ];
+
   // --- Bloqueo de la app ---
 
   /// Si está activo, la app pide la credencial del dispositivo (huella, rostro
@@ -51,6 +68,19 @@ class AppSettings {
 
   @ignore
   bool get goalsEnabled => enabledModules.contains(AppModule.goals.name);
+
+  /// Secciones de la barra inferior parseadas de forma segura. Garantiza que
+  /// Ajustes esté siempre presente (y al final), para no perder el acceso.
+  @ignore
+  List<NavSection> get sections {
+    final result = <NavSection>[];
+    for (final name in navSections) {
+      final s = enumByName(NavSection.values, name, NavSection.settings);
+      if (s != NavSection.settings && !result.contains(s)) result.add(s);
+    }
+    result.add(NavSection.settings);
+    return result;
+  }
 
   /// Lista de tarjetas parseada de forma segura (descarta nombres desconocidos).
   @ignore

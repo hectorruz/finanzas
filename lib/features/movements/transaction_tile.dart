@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/icons/app_icons.dart';
-import '../../core/money/money.dart';
 import '../../data/models/enums.dart';
 import '../../data/models/transaction.dart';
 import '../../data/repositories/lookups.dart';
+import '../../shared/widgets/money_text.dart';
 
 /// Fila reutilizable que representa un movimiento.
 class TransactionTile extends ConsumerWidget {
@@ -52,10 +52,7 @@ class TransactionTile extends ConsumerWidget {
             ? iconByName(category.iconName)
             : (isExpense ? Icons.arrow_downward : Icons.arrow_upward);
 
-    final amount = Money(txn.amountCents);
-    final amountText = isTransfer
-        ? amount.format()
-        : (isExpense ? '-' : '+') + amount.format();
+    final amountPrefix = isTransfer ? '' : (isExpense ? '-' : '+');
 
     final subtitleParts = <String>[
       if (category != null) category.name,
@@ -82,8 +79,9 @@ class TransactionTile extends ConsumerWidget {
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(subtitleParts.join(' · ')),
-      trailing: Text(
-        amountText,
+      trailing: MoneyText(
+        txn.amountCents,
+        prefix: amountPrefix,
         style: TextStyle(
           color: color,
           fontWeight: FontWeight.w600,

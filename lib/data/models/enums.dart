@@ -15,6 +15,9 @@ enum RecurringFrequency { daily, weekly, monthly, yearly }
 
 enum AppModule { goals }
 
+/// Secciones disponibles en la barra inferior de navegación.
+enum NavSection { dashboard, movements, receipts, goals, settings }
+
 /// Tarjetas disponibles en el dashboard configurable.
 enum DashboardCardType {
   totalBalance,

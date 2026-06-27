@@ -36,8 +36,16 @@ class CategoriesScreen extends ConsumerWidget {
                 list.where((c) => c.kind == CategoryKind.income).toList();
             return TabBarView(
               children: [
-                _CategoryList(items: expenses, onEdit: (c) => _edit(context, ref, c)),
-                _CategoryList(items: incomes, onEdit: (c) => _edit(context, ref, c)),
+                _CategoryList(
+                  items: expenses,
+                  onEdit: (c) => _edit(context, ref, c),
+                  onAddSub: (p) => _addSub(context, ref, p),
+                ),
+                _CategoryList(
+                  items: incomes,
+                  onEdit: (c) => _edit(context, ref, c),
+                  onAddSub: (p) => _addSub(context, ref, p),
+                ),
               ],
             );
           },
@@ -48,38 +56,99 @@ class CategoriesScreen extends ConsumerWidget {
 
   Future<void> _edit(
       BuildContext context, WidgetRef ref, Category? category) async {
+    // Para subcategorías mostramos el nombre del padre.
+    String? parentName;
+    if (category?.parentId != null) {
+      final cats = ref.read(categoriesProvider).valueOrNull ?? const [];
+      for (final c in cats) {
+        if (c.id == category!.parentId) {
+          parentName = c.name;
+          break;
+        }
+      }
+    }
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _CategoryEditor(category: category),
+      builder: (_) => _CategoryEditor(category: category, parentName: parentName),
+    );
+  }
+
+  Future<void> _addSub(
+      BuildContext context, WidgetRef ref, Category parent) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _CategoryEditor(
+        parentId: parent.id,
+        fixedKind: parent.kind,
+        parentName: parent.name,
+      ),
     );
   }
 }
 
 class _CategoryList extends StatelessWidget {
-  const _CategoryList({required this.items, required this.onEdit});
+  const _CategoryList({
+    required this.items,
+    required this.onEdit,
+    required this.onAddSub,
+  });
   final List<Category> items;
   final ValueChanged<Category> onEdit;
+  final ValueChanged<Category> onAddSub;
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
       return const Center(child: Text('No hay categorías.'));
     }
+    final groups = groupCategories(items);
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 96),
-      itemCount: items.length,
+      itemCount: groups.length,
       itemBuilder: (_, i) {
-        final c = items[i];
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: Color(c.colorValue).withOpacity(0.18),
-            child: Icon(iconByName(c.iconName), color: Color(c.colorValue)),
-          ),
-          title: Text(c.name),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => onEdit(c),
+        final g = groups[i];
+        final c = g.parent;
+        return Column(
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Color(c.colorValue).withOpacity(0.18),
+                child: Icon(iconByName(c.iconName), color: Color(c.colorValue)),
+              ),
+              title: Text(c.name),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Añadir subcategoría',
+                    icon: const Icon(Icons.add),
+                    onPressed: () => onAddSub(c),
+                  ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+              onTap: () => onEdit(c),
+            ),
+            for (final sub in g.children)
+              Padding(
+                padding: const EdgeInsets.only(left: 32),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Color(sub.colorValue).withOpacity(0.18),
+                    child: Icon(iconByName(sub.iconName),
+                        size: 18, color: Color(sub.colorValue)),
+                  ),
+                  title: Text(sub.name),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => onEdit(sub),
+                ),
+              ),
+          ],
         );
       },
     );
@@ -87,8 +156,16 @@ class _CategoryList extends StatelessWidget {
 }
 
 class _CategoryEditor extends ConsumerStatefulWidget {
-  const _CategoryEditor({this.category});
+  const _CategoryEditor({
+    this.category,
+    this.parentId,
+    this.fixedKind,
+    this.parentName,
+  });
   final Category? category;
+  final int? parentId;
+  final CategoryKind? fixedKind;
+  final String? parentName;
 
   @override
   ConsumerState<_CategoryEditor> createState() => _CategoryEditorState();
@@ -100,12 +177,15 @@ class _CategoryEditorState extends ConsumerState<_CategoryEditor> {
   late String _iconName;
   late int _colorValue;
 
+  /// ¿Estamos creando/editando una subcategoría? (kind heredado, sin selector)
+  bool get _isSub => widget.category?.parentId != null || widget.parentId != null;
+
   @override
   void initState() {
     super.initState();
     final c = widget.category;
     _nameController = TextEditingController(text: c?.name ?? '');
-    _kind = c?.kind ?? CategoryKind.expense;
+    _kind = c?.kind ?? widget.fixedKind ?? CategoryKind.expense;
     _iconName = c?.iconName ?? 'category';
     _colorValue = c?.colorValue ?? kPaletteColors.first;
   }
@@ -124,7 +204,8 @@ class _CategoryEditorState extends ConsumerState<_CategoryEditor> {
       ..name = name
       ..kind = _kind
       ..iconName = _iconName
-      ..colorValue = _colorValue;
+      ..colorValue = _colorValue
+      ..parentId = widget.category?.parentId ?? widget.parentId;
     await ref.read(categoryRepositoryProvider).save(category);
     if (mounted) Navigator.of(context).pop();
   }
@@ -152,7 +233,9 @@ class _CategoryEditorState extends ConsumerState<_CategoryEditor> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  widget.category == null ? 'Nueva categoría' : 'Editar',
+                  widget.category == null
+                      ? (_isSub ? 'Nueva subcategoría' : 'Nueva categoría')
+                      : 'Editar',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 if (widget.category != null)
@@ -162,23 +245,33 @@ class _CategoryEditorState extends ConsumerState<_CategoryEditor> {
                   ),
               ],
             ),
+            if (_isSub && widget.parentName != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('Subcategoría de ${widget.parentName}',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ),
             const SizedBox(height: 8),
             TextField(
               controller: _nameController,
               decoration: const InputDecoration(labelText: 'Nombre'),
             ),
             const SizedBox(height: 16),
-            SegmentedButton<CategoryKind>(
-              segments: const [
-                ButtonSegment(
-                    value: CategoryKind.expense, label: Text('Gasto')),
-                ButtonSegment(
-                    value: CategoryKind.income, label: Text('Ingreso')),
-              ],
-              selected: {_kind},
-              onSelectionChanged: (s) => setState(() => _kind = s.first),
-            ),
-            const SizedBox(height: 16),
+            // El tipo solo se elige en categorías de primer nivel; las
+            // subcategorías heredan el del padre.
+            if (!_isSub) ...[
+              SegmentedButton<CategoryKind>(
+                segments: const [
+                  ButtonSegment(
+                      value: CategoryKind.expense, label: Text('Gasto')),
+                  ButtonSegment(
+                      value: CategoryKind.income, label: Text('Ingreso')),
+                ],
+                selected: {_kind},
+                onSelectionChanged: (s) => setState(() => _kind = s.first),
+              ),
+              const SizedBox(height: 16),
+            ],
             IconColorPicker(
               iconName: _iconName,
               colorValue: _colorValue,

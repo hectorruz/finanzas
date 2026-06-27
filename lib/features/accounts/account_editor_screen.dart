@@ -20,6 +20,7 @@ class AccountEditorScreen extends ConsumerStatefulWidget {
 class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _noteController = TextEditingController();
 
   AccountType _type = AccountType.bank;
   int _initialCents = 0;
@@ -47,6 +48,7 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
         _iconName = acc.iconName;
         _colorValue = acc.colorValue;
         _includeInTotal = acc.includeInTotal;
+        _noteController.text = acc.note;
       }
     }
     if (mounted) setState(() => _loading = false);
@@ -55,6 +57,7 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 
@@ -67,7 +70,8 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
       ..initialBalanceCents = _initialCents
       ..iconName = _iconName
       ..colorValue = _colorValue
-      ..includeInTotal = _includeInTotal;
+      ..includeInTotal = _includeInTotal
+      ..note = _noteController.text.trim();
     await ref.read(accountRepositoryProvider).save(acc);
     if (mounted) Navigator.of(context).pop();
   }
@@ -152,6 +156,15 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
                     colorValue: _colorValue,
                     onIconChanged: (n) => setState(() => _iconName = n),
                     onColorChanged: (c) => setState(() => _colorValue = c),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _noteController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Observaciones (opcional)',
+                      prefixIcon: Icon(Icons.sticky_note_2_outlined),
+                    ),
                   ),
                   SwitchListTile(
                     value: _includeInTotal,

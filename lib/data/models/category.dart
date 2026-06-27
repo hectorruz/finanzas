@@ -21,7 +21,15 @@ class Category {
   /// Marca las categorías creadas por defecto (siguen siendo editables/borrables).
   bool isDefault = false;
 
+  /// Id de la categoría padre si es una subcategoría; `null` si es de primer
+  /// nivel. Una subcategoría hereda el [kind] de su padre.
+  int? parentId;
+
   int sortOrder = 0;
 
   Category();
+
+  /// ¿Es una subcategoría (cuelga de otra)?
+  @ignore
+  bool get isSubcategory => parentId != null;
 }

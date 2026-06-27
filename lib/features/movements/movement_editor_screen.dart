@@ -317,20 +317,26 @@ class _CategoryDropdown extends StatelessWidget {
         prefixIcon: Icon(Icons.category),
       ),
       items: [
-        for (final c in categories)
-          DropdownMenuItem<int>(
-            value: c.id,
-            child: Row(
-              children: [
-                Icon(iconByName(c.iconName),
-                    size: 18, color: Color(c.colorValue)),
-                const SizedBox(width: 8),
-                Text(c.name),
-              ],
-            ),
-          ),
+        for (final g in groupCategories(categories)) ...[
+          _item(g.parent, indent: false),
+          for (final sub in g.children) _item(sub, indent: true),
+        ],
       ],
       onChanged: onChanged,
+    );
+  }
+
+  DropdownMenuItem<int> _item(Category c, {required bool indent}) {
+    return DropdownMenuItem<int>(
+      value: c.id,
+      child: Row(
+        children: [
+          if (indent) const SizedBox(width: 20),
+          Icon(iconByName(c.iconName), size: 18, color: Color(c.colorValue)),
+          const SizedBox(width: 8),
+          Flexible(child: Text(c.name, overflow: TextOverflow.ellipsis)),
+        ],
+      ),
     );
   }
 }

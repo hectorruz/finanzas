@@ -10,7 +10,9 @@ import '../../data/repositories/goal_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/money_text.dart';
 import '../movements/transaction_tile.dart';
+import '../settings/goals_screen.dart';
 import 'dashboard_providers.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -25,6 +27,14 @@ class DashboardScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Inicio'),
         actions: [
+          IconButton(
+            tooltip: settings.hideAmounts ? 'Mostrar importes' : 'Ocultar importes',
+            icon: Icon(
+                settings.hideAmounts ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => ref
+                .read(settingsRepositoryProvider)
+                .update((s) => s.hideAmounts = !s.hideAmounts),
+          ),
           IconButton(
             tooltip: 'Configurar inicio',
             icon: const Icon(Icons.tune),
@@ -105,8 +115,8 @@ class _TotalBalanceCard extends ConsumerWidget {
             const SizedBox(height: 8),
             AsyncValueView(
               value: total,
-              data: (cents) => Text(
-                Money(cents).format(),
+              data: (cents) => MoneyText(
+                cents,
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       color: scheme.onPrimaryContainer,
                       fontWeight: FontWeight.bold,
@@ -149,7 +159,7 @@ class _AccountsBalanceCard extends ConsumerWidget {
                               size: 14, color: Color(a.colorValue)),
                           title: Text(a.name),
                           trailing: balance.maybeWhen(
-                            data: (c) => Text(Money(c).format()),
+                            data: (c) => MoneyText(c),
                             orElse: () => const Text('…'),
                           ),
                         );
@@ -190,7 +200,7 @@ class _MonthComparisonCard extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Ingresos'),
-                        Text(Money(c.currentIncome).format(),
+                        MoneyText(c.currentIncome,
                             style: TextStyle(color: Colors.green.shade600)),
                       ],
                     ),
@@ -198,7 +208,7 @@ class _MonthComparisonCard extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Gastos'),
-                        Text(Money(c.currentExpense).format(),
+                        MoneyText(c.currentExpense,
                             style: TextStyle(color: scheme.error)),
                       ],
                     ),
@@ -368,9 +378,14 @@ class _GoalsCard extends ConsumerWidget {
                                   MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(g.name),
-                                Text(
-                                    '${Money(g.currentCents).format()} / '
-                                    '${Money(g.targetCents).format()}'),
+                                Consumer(
+                                  builder: (context, ref, _) =>
+                                      ref.watch(hideAmountsProvider)
+                                          ? const Text(kHiddenAmount)
+                                          : Text(
+                                              '${Money(g.currentCents).format()} / '
+                                              '${Money(g.targetCents).format()}'),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 4),
@@ -379,6 +394,18 @@ class _GoalsCard extends ConsumerWidget {
                               borderRadius: BorderRadius.circular(8),
                               minHeight: 8,
                             ),
+                            if (goalPlanLabel(g) != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  goalPlanLabel(g)!,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),

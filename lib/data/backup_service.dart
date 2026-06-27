@@ -119,6 +119,7 @@ class BackupService {
         'colorValue': a.colorValue,
         'archived': a.archived,
         'includeInTotal': a.includeInTotal,
+        'note': a.note,
         'sortOrder': a.sortOrder,
       };
 
@@ -132,6 +133,7 @@ class BackupService {
     ..colorValue = m['colorValue'] as int? ?? 0xFF1976D2
     ..archived = m['archived'] as bool? ?? false
     ..includeInTotal = m['includeInTotal'] as bool? ?? true
+    ..note = m['note'] as String? ?? ''
     ..sortOrder = m['sortOrder'] as int? ?? 0;
 
   Map<String, dynamic> _categoryToMap(Category c) => {
@@ -141,6 +143,7 @@ class BackupService {
         'iconName': c.iconName,
         'colorValue': c.colorValue,
         'isDefault': c.isDefault,
+        'parentId': c.parentId,
         'sortOrder': c.sortOrder,
       };
 
@@ -152,6 +155,7 @@ class BackupService {
     ..iconName = m['iconName'] as String? ?? 'category'
     ..colorValue = m['colorValue'] as int? ?? 0xFF9E9E9E
     ..isDefault = m['isDefault'] as bool? ?? false
+    ..parentId = m['parentId'] as int?
     ..sortOrder = m['sortOrder'] as int? ?? 0;
 
   Map<String, dynamic> _transactionToMap(TransactionModel t) => {
@@ -245,6 +249,8 @@ class BackupService {
         'iconName': g.iconName,
         'colorValue': g.colorValue,
         'deadline': g.deadline?.toIso8601String(),
+        'monthlyContributionCents': g.monthlyContributionCents,
+        'planMode': g.planMode,
         'sortOrder': g.sortOrder,
       };
 
@@ -258,6 +264,8 @@ class BackupService {
     ..deadline = m['deadline'] == null
         ? null
         : DateTime.parse(m['deadline'] as String)
+    ..monthlyContributionCents = m['monthlyContributionCents'] as int? ?? 0
+    ..planMode = m['planMode'] as String? ?? 'contribution'
     ..sortOrder = m['sortOrder'] as int? ?? 0;
 
   Map<String, dynamic>? _settingsToMap(AppSettings? s) {
@@ -270,21 +278,31 @@ class BackupService {
       'enabledModules': s.enabledModules,
       'dashboardCards': s.dashboardCards,
       'totalBalanceAccountIds': s.totalBalanceAccountIds,
+      'navSections': s.navSections,
+      'alwaysShowNavLabels': s.alwaysShowNavLabels,
+      'hideAmounts': s.hideAmounts,
     };
   }
 
-  AppSettings _settingsFromMap(Map<String, dynamic> m) => AppSettings()
-    ..id = 0
-    ..themeMode = m['themeMode'] as String? ?? 'system'
-    ..dynamicColor = m['dynamicColor'] as bool? ?? true
-    ..amoled = m['amoled'] as bool? ?? true
-    ..seedColorValue = m['seedColorValue'] as int? ?? 0xFF2196F3
-    ..enabledModules =
-        (m['enabledModules'] as List<dynamic>? ?? []).cast<String>()
-    ..dashboardCards =
-        (m['dashboardCards'] as List<dynamic>? ?? []).cast<String>()
-    ..totalBalanceAccountIds =
-        (m['totalBalanceAccountIds'] as List<dynamic>? ?? []).cast<int>();
+  AppSettings _settingsFromMap(Map<String, dynamic> m) {
+    final s = AppSettings()
+      ..id = 0
+      ..themeMode = m['themeMode'] as String? ?? 'system'
+      ..dynamicColor = m['dynamicColor'] as bool? ?? true
+      ..amoled = m['amoled'] as bool? ?? true
+      ..seedColorValue = m['seedColorValue'] as int? ?? 0xFF2196F3
+      ..enabledModules =
+          (m['enabledModules'] as List<dynamic>? ?? []).cast<String>()
+      ..dashboardCards =
+          (m['dashboardCards'] as List<dynamic>? ?? []).cast<String>()
+      ..totalBalanceAccountIds =
+          (m['totalBalanceAccountIds'] as List<dynamic>? ?? []).cast<int>()
+      ..alwaysShowNavLabels = m['alwaysShowNavLabels'] as bool? ?? false
+      ..hideAmounts = m['hideAmounts'] as bool? ?? false;
+    final nav = (m['navSections'] as List<dynamic>?)?.cast<String>();
+    if (nav != null && nav.isNotEmpty) s.navSections = nav;
+    return s;
+  }
 }
 
 final backupServiceProvider = Provider<BackupService>(

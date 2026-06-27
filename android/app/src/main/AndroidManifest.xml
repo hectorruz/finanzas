@@ -32,6 +32,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Popup translúcido de alta rápida lanzado por el tile -->
+        <activity
+            android:name=".QuickAddActivity"
+            android:exported="false"
+            android:theme="@style/QuickAddTheme"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance" />
         <!-- Tile de Ajustes rápidos: registra un movimiento de un toque -->
         <service
             android:name=".QuickAddTileService"
