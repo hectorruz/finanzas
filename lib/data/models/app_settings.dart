@@ -39,6 +39,10 @@ class AppSettings {
   /// tengan `includeInTotal`.
   List<int> totalBalanceAccountIds = [];
 
+  /// Ids de cuentas que se muestran en la tarjeta "Balance por cuentas".
+  /// Vacío = se muestran todas las cuentas activas.
+  List<int> accountsCardIds = [];
+
   // --- Barra inferior ---
 
   /// Mostrar siempre los títulos de la barra inferior (no solo el seleccionado).

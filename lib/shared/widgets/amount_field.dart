@@ -14,12 +14,14 @@ class AmountField extends StatefulWidget {
     required this.onChangedCents,
     this.label = 'Importe',
     this.autofocus = false,
+    this.allowZero = false,
   });
 
   final int? initialCents;
   final ValueChanged<int?> onChangedCents;
   final String label;
   final bool autofocus;
+  final bool allowZero;
 
   @override
   State<AmountField> createState() => _AmountFieldState();
@@ -60,8 +62,14 @@ class _AmountFieldState extends State<AmountField> {
         prefixIcon: const Icon(Icons.euro),
       ),
       validator: (value) {
-        final cents = Money.parseToCents(value ?? '');
-        if (cents == null || cents <= 0) return 'Introduce un importe válido';
+        final text = value ?? '';
+        if (widget.allowZero && text.trim().isEmpty) return null;
+        final cents = Money.parseToCents(text);
+        if (widget.allowZero) {
+          if (cents == null) return 'Introduce un importe válido';
+        } else {
+          if (cents == null || cents <= 0) return 'Introduce un importe válido';
+        }
         return null;
       },
       onChanged: (value) => widget.onChangedCents(Money.parseToCents(value)),

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/models/account.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
@@ -45,6 +46,76 @@ class MonthComparison {
     return (currentExpense - previousExpense) / previousExpense * 100;
   }
 }
+
+/// Una fila de la tarjeta "Balance por cuentas": la cuenta, su profundidad en el
+/// árbol (0 = primer nivel) y su saldo **agregado** (saldo propio más el de sus
+/// subcuentas mostradas).
+class AccountCardRow {
+  const AccountCardRow({
+    required this.account,
+    required this.depth,
+    required this.rolledCents,
+  });
+  final Account account;
+  final int depth;
+  final int rolledCents;
+}
+
+/// Filas de la tarjeta "Balance por cuentas", en orden de árbol e indentadas por
+/// profundidad. Cada cuenta muestra su saldo propio más el de sus descendientes
+/// presentes en el conjunto mostrado (agregado solo visual: el balance total no
+/// se ve afectado). Si en ajustes no se filtra ninguna cuenta, se muestran todas
+/// las activas; si se filtra, solo esas (el agregado suma los descendientes que
+/// también se muestran).
+final accountsCardRowsProvider =
+    FutureProvider<List<AccountCardRow>>((ref) async {
+  ref.watch(transactionsChangedProvider);
+  final accountRepo = ref.watch(accountRepositoryProvider);
+  final settings = ref.watch(currentSettingsProvider);
+  final all = await ref.watch(accountsProvider.future);
+
+  final ids = settings.accountsCardIds.toSet();
+  final shown =
+      ids.isEmpty ? all : all.where((a) => ids.contains(a.id)).toList();
+  if (shown.isEmpty) return const [];
+
+  // Saldo propio de cada cuenta mostrada.
+  final ownCents = <int, int>{};
+  for (final a in shown) {
+    ownCents[a.id] = await accountRepo.balanceCents(a.id);
+  }
+
+  // Hijos directos por padre, restringido a las cuentas mostradas.
+  final shownIds = shown.map((a) => a.id).toSet();
+  final childrenOf = <int, List<int>>{};
+  for (final a in shown) {
+    final p = a.parentId;
+    if (p != null && shownIds.contains(p)) {
+      childrenOf.putIfAbsent(p, () => []).add(a.id);
+    }
+  }
+
+  // Saldo agregado = propio + suma de descendientes mostrados (recursivo).
+  final rolled = <int, int>{};
+  int rolledFor(int id) {
+    final cached = rolled[id];
+    if (cached != null) return cached;
+    var total = ownCents[id] ?? 0;
+    for (final childId in childrenOf[id] ?? const []) {
+      total += rolledFor(childId);
+    }
+    return rolled[id] = total;
+  }
+
+  return [
+    for (final entry in flattenAccounts(shown))
+      AccountCardRow(
+        account: entry.value,
+        depth: entry.depth,
+        rolledCents: rolledFor(entry.value.id),
+      ),
+  ];
+});
 
 final monthComparisonProvider = FutureProvider<MonthComparison>((ref) async {
   ref.watch(transactionsChangedProvider);

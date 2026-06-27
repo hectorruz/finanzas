@@ -155,6 +155,9 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
                           value: AccountType.bank, child: Text('Banco')),
                       DropdownMenuItem(
                           value: AccountType.cash, child: Text('Efectivo')),
+                      DropdownMenuItem(
+                          value: AccountType.investment,
+                          child: Text('Inversiones')),
                     ],
                     onChanged: (v) => setState(() => _type = v ?? _type),
                   ),
@@ -163,6 +166,7 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
                     label: 'Saldo inicial',
                     initialCents: _initialCents == 0 ? null : _initialCents,
                     onChangedCents: (c) => _initialCents = c ?? 0,
+                    allowZero: true,
                   ),
                   const SizedBox(height: 16),
                   IconColorPicker(

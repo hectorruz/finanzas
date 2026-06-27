@@ -89,6 +89,7 @@ class AccountsScreen extends ConsumerWidget {
   String _typeLabel(String type) => switch (type) {
         'bank' => 'Banco',
         'cash' => 'Efectivo',
+        'investment' => 'Inversiones',
         _ => type,
       };
 }

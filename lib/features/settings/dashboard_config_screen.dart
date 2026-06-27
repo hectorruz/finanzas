@@ -84,6 +84,33 @@ class DashboardConfigScreen extends ConsumerWidget {
           const Divider(),
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Text('Cuentas en la tarjeta "Balance por cuentas"',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Si no marcas ninguna, se muestran todas las cuentas activas.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
+          for (final a in accounts)
+            CheckboxListTile(
+              title: Text(a.name),
+              value: settings.accountsCardIds.contains(a.id),
+              onChanged: (checked) => repo.update((s) {
+                final ids = [...s.accountsCardIds];
+                if (checked ?? false) {
+                  if (!ids.contains(a.id)) ids.add(a.id);
+                } else {
+                  ids.remove(a.id);
+                }
+                s.accountsCardIds = ids;
+              }),
+            ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
             child: Text('Cuentas en el balance total',
                 style: TextStyle(fontWeight: FontWeight.bold)),
           ),

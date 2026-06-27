@@ -5,7 +5,7 @@
 /// añaden valores en el futuro. El parseo seguro desde texto se hace con
 /// [enumByName], que aplica un fallback en lugar de lanzar excepción.
 
-enum AccountType { bank, cash }
+enum AccountType { bank, cash, investment }
 
 enum TransactionType { income, expense, transfer }
 

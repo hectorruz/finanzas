@@ -5,12 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../core/money/money.dart';
 import '../../core/router/app_router.dart';
 import '../../data/models/enums.dart';
-import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/goal_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/money_text.dart';
+import '../accounts/account_editor_screen.dart';
+import '../home_shell.dart';
 import '../movements/transaction_tile.dart';
 import '../settings/goals_screen.dart';
 import 'dashboard_providers.dart';
@@ -39,6 +40,24 @@ class DashboardScreen extends ConsumerWidget {
             tooltip: 'Configurar inicio',
             icon: const Icon(Icons.tune),
             onPressed: () => context.push(Routes.dashboardConfig),
+          ),
+        ],
+      ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'scan_home',
+            tooltip: 'Escanear ticket',
+            onPressed: () => context.push(Routes.receiptScan),
+            child: const Icon(Icons.document_scanner),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'add_home',
+            tooltip: 'Nuevo movimiento',
+            onPressed: () => context.push(Routes.movementEditor),
+            child: const Icon(Icons.add),
           ),
         ],
       ),
@@ -105,25 +124,40 @@ class _TotalBalanceCard extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     return Card(
       color: scheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Balance total',
-                style: TextStyle(color: scheme.onPrimaryContainer)),
-            const SizedBox(height: 8),
-            AsyncValueView(
-              value: total,
-              data: (cents) => MoneyText(
-                cents,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      color: scheme.onPrimaryContainer,
-                      fontWeight: FontWeight.bold,
-                    ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => context.push(Routes.accounts),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.account_balance_wallet,
+                      size: 20, color: scheme.onPrimaryContainer),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Balance total',
+                        style: TextStyle(color: scheme.onPrimaryContainer)),
+                  ),
+                  Icon(Icons.chevron_right,
+                      color: scheme.onPrimaryContainer.withValues(alpha: 0.6)),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              AsyncValueView(
+                value: total,
+                data: (cents) => MoneyText(
+                  cents,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        color: scheme.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -135,35 +169,36 @@ class _AccountsBalanceCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final accounts = ref.watch(accountsProvider);
+    final rows = ref.watch(accountsCardRowsProvider);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _CardHeader(icon: Icons.account_balance_wallet, title: 'Cuentas'),
+            _CardHeader(
+              icon: Icons.account_balance_wallet,
+              title: 'Cuentas',
+              onTap: () => context.push(Routes.accounts),
+            ),
             AsyncValueView(
-              value: accounts,
+              value: rows,
               data: (list) => Column(
                 children: [
-                  for (final a in list)
-                    Consumer(
-                      builder: (context, ref, _) {
-                        final balance =
-                            ref.watch(accountBalanceProvider(a.id));
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
-                          leading: Icon(Icons.circle,
-                              size: 14, color: Color(a.colorValue)),
-                          title: Text(a.name),
-                          trailing: balance.maybeWhen(
-                            data: (c) => MoneyText(c),
-                            orElse: () => const Text('…'),
-                          ),
-                        );
-                      },
+                  for (final row in list)
+                    ListTile(
+                      contentPadding:
+                          EdgeInsets.only(left: row.depth * 24.0),
+                      dense: true,
+                      leading: Icon(Icons.circle,
+                          size: row.depth == 0 ? 14 : 10,
+                          color: Color(row.account.colorValue)),
+                      title: Text(row.account.name),
+                      trailing: MoneyText(row.rolledCents),
+                      onTap: () => context.push(
+                        Routes.accountEditor,
+                        extra: AccountEditorArgs(accountId: row.account.id),
+                      ),
                     ),
                 ],
               ),
@@ -187,8 +222,13 @@ class _MonthComparisonCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _CardHeader(
-                icon: Icons.calendar_month, title: 'Este mes'),
+            _CardHeader(
+              icon: Icons.calendar_month,
+              title: 'Este mes',
+              onTap: () => ref
+                  .read(requestedNavSectionProvider.notifier)
+                  .state = NavSection.movements,
+            ),
             AsyncValueView(
               value: comparison,
               data: (c) {
@@ -255,10 +295,15 @@ class _RecentMovementsCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(12, 8, 12, 0),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
               child: _CardHeader(
-                  icon: Icons.history, title: 'Últimos movimientos'),
+                icon: Icons.history,
+                title: 'Últimos movimientos',
+                onTap: () => ref
+                    .read(requestedNavSectionProvider.notifier)
+                    .state = NavSection.movements,
+              ),
             ),
             AsyncValueView(
               value: recent,
@@ -358,7 +403,13 @@ class _GoalsCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _CardHeader(icon: Icons.flag, title: 'Objetivos'),
+            _CardHeader(
+              icon: Icons.flag,
+              title: 'Objetivos',
+              onTap: () => ref
+                  .read(requestedNavSectionProvider.notifier)
+                  .state = NavSection.goals,
+            ),
             AsyncValueView(
               value: goals,
               data: (list) {
@@ -421,25 +472,41 @@ class _GoalsCard extends ConsumerWidget {
 }
 
 class _CardHeader extends StatelessWidget {
-  const _CardHeader({required this.icon, required this.title});
+  const _CardHeader({required this.icon, required this.title, this.onTap});
   final IconData icon;
   final String title;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final content = Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
           Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 8),
-          Text(title,
+          Expanded(
+            child: Text(
+              title,
               style: Theme.of(context)
                   .textTheme
                   .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w600)),
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          if (onTap != null)
+            Icon(Icons.chevron_right,
+                size: 18,
+                color: Theme.of(context).colorScheme.outline),
         ],
       ),
+    );
+
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: content,
     );
   }
 }
