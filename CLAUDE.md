@@ -28,8 +28,11 @@ And `android/app/src/main/AndroidManifest.xml`:
 - Add `CAMERA` permission and `android.hardware.camera` feature (optional)
 - Add `com.google.mlkit.vision.DEPENDENCIES` meta-data with value `ocr`
 - Add `USE_BIOMETRIC` permission (required by `local_auth` for the app lock)
+- Register `QuickAddActivity` with `android:theme="@style/QuickAddTheme"`, `excludeFromRecents`, `taskAffinity=""`, `launchMode="singleInstance"` (the quick-add popup)
 
 For the app lock (`local_auth`), `MainActivity` must extend `FlutterFragmentActivity` (not `FlutterActivity`); otherwise the biometric prompt crashes.
+
+For the quick-add popup (Quick Settings tile), `res/values/styles.xml` (and `values-night`) need a translucent `QuickAddTheme` (`Theme.Translucent.NoTitleBar`, `windowIsTranslucent=true`, transparent `windowBackground`). `QuickAddActivity` extends `FlutterActivity`, overrides `getDartEntrypointFunctionName()` → `"quickAddMain"` and `getBackgroundMode()` → `transparent`. `QuickAddTileService.onClick()` launches `QuickAddActivity` (not `MainActivity`).
 
 ## Common commands
 
@@ -62,15 +65,26 @@ lib/
     backup_service/  # JSON import/export
     seed_service/    # default data on first launch
   features/
-    home_shell.dart  # IndexedStack bottom-nav (Dashboard / Movements / Receipts / Settings)
-    dashboard/       # configurable card grid
-    movements/       # transaction list, filters, batch edit, recurring rules
+    home_shell.dart  # data-driven bottom-nav (sections chosen/ordered in settings; labelBehavior from settings)
+    dashboard/       # configurable card grid; AppBar eye toggles the privacy mode
+    movements/       # transaction list, filters, batch edit, recurring rules; FAB + small scan-ticket FAB
     receipts/        # OCR scan via ML Kit (on-device)
-    accounts/        # account CRUD
-    categories/      # category CRUD
-    settings/        # app settings, goals, dashboard config
-  shared/widgets/    # AmountField, AsyncValueView, IconColorPicker
+    accounts/        # account CRUD (incl. free-text `note`)
+    categories/      # category CRUD with subcategories (Category.parentId)
+    settings/        # app settings, goals (planning), dashboard config, nav config
+    security/        # app lock gate + device-credential auth (local_auth)
+    quick_add/       # translucent popup for the Quick Settings tile (own entrypoint)
+  shared/widgets/    # AmountField, AsyncValueView, IconColorPicker, MoneyText
+  assets/fonts/      # Noto Sans (bundled so report PDFs render the € glyph)
 ```
+
+### Quick-add popup (second Flutter entrypoint)
+
+The Quick Settings tile opens a translucent popup to add only an income/expense, without launching the full app or passing the app lock. It runs a **separate Dart entrypoint** `quickAddMain` (`lib/main.dart`, annotated `@pragma('vm:entry-point')`) that opens Isar and runs `QuickAddPopupApp` (`lib/features/quick_add/`) — it does **not** mount `FinanzasApp`/`AppLockGate`. Android side: `QuickAddActivity` + `QuickAddTheme` (see setup). The popup reuses the app's theme via `DynamicColorBuilder` + `AppTheme`. Runs in its own engine/isolate; Isar supports multi-isolate access to the same instance.
+
+### Privacy mode (hide amounts)
+
+`AppSettings.hideAmounts` (toggled by the eye in the dashboard AppBar) masks every monetary value app-wide. Render amounts with `MoneyText` (`lib/shared/widgets/money_text.dart`), which watches `hideAmountsProvider` and shows `kHiddenAmount` when active — prefer it over `Text(Money(x).format())` for on-screen figures.
 
 ### State / data flow
 
