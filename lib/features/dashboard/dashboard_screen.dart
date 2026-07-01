@@ -64,6 +64,7 @@ class DashboardScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(totalBalanceProvider);
+          ref.invalidate(balanceSubtotalsProvider);
           ref.invalidate(monthComparisonProvider);
           ref.invalidate(recentTransactionsProvider);
         },
@@ -156,9 +157,58 @@ class _TotalBalanceCard extends ConsumerWidget {
                       ),
                 ),
               ),
+              const _BalanceSubtotals(),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Subtotales configurables mostrados bajo el balance total, más pequeños.
+class _BalanceSubtotals extends ConsumerWidget {
+  const _BalanceSubtotals();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final subs = ref.watch(balanceSubtotalsProvider).valueOrNull ?? const [];
+    if (subs.isEmpty) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final s in subs)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      s.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onPrimaryContainer.withValues(alpha: 0.8),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  MoneyText(
+                    s.cents,
+                    style: TextStyle(
+                      color: scheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

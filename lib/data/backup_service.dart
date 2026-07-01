@@ -280,6 +280,8 @@ class BackupService {
       'enabledModules': s.enabledModules,
       'dashboardCards': s.dashboardCards,
       'totalBalanceAccountIds': s.totalBalanceAccountIds,
+      'accountsCardIds': s.accountsCardIds,
+      'balanceSubtotals': s.balanceSubtotals,
       'navSections': s.navSections,
       'alwaysShowNavLabels': s.alwaysShowNavLabels,
       'hideAmounts': s.hideAmounts,
@@ -299,6 +301,10 @@ class BackupService {
           (m['dashboardCards'] as List<dynamic>? ?? []).cast<String>()
       ..totalBalanceAccountIds =
           (m['totalBalanceAccountIds'] as List<dynamic>? ?? []).cast<int>()
+      ..accountsCardIds =
+          (m['accountsCardIds'] as List<dynamic>? ?? []).cast<int>()
+      ..balanceSubtotals =
+          (m['balanceSubtotals'] as List<dynamic>? ?? []).cast<String>()
       ..alwaysShowNavLabels = m['alwaysShowNavLabels'] as bool? ?? false
       ..hideAmounts = m['hideAmounts'] as bool? ?? false;
     final nav = (m['navSections'] as List<dynamic>?)?.cast<String>();

@@ -1,8 +1,35 @@
+import 'dart:convert';
+
 import 'package:isar_community/isar.dart';
 
 import 'enums.dart';
 
 part 'app_settings.g.dart';
+
+/// Un subtotal configurable del balance: un nombre y las cuentas/subcuentas
+/// cuyos saldos suma. Se guarda serializado en [AppSettings.balanceSubtotals].
+class BalanceSubtotal {
+  const BalanceSubtotal({required this.name, required this.accountIds});
+
+  final String name;
+  final List<int> accountIds;
+
+  String encode() => jsonEncode({'name': name, 'ids': accountIds});
+
+  /// Decodifica una entrada; devuelve `null` si el JSON es inválido.
+  static BalanceSubtotal? tryDecode(String raw) {
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      return BalanceSubtotal(
+        name: m['name'] as String? ?? '',
+        accountIds:
+            (m['ids'] as List<dynamic>? ?? const []).map((e) => e as int).toList(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
 
 /// Registro único (id fijo) con la configuración global de la app.
 @Collection(accessor: 'settings')
@@ -43,6 +70,10 @@ class AppSettings {
   /// Vacío = se muestran todas las cuentas activas.
   List<int> accountsCardIds = [];
 
+  /// Subtotales que aparecen bajo el balance total, cada uno serializado en
+  /// JSON (nombre + ids de cuentas a sumar). Ver [subtotals].
+  List<String> balanceSubtotals = [];
+
   // --- Barra inferior ---
 
   /// Mostrar siempre los títulos de la barra inferior (no solo el seleccionado).
@@ -72,6 +103,18 @@ class AppSettings {
 
   @ignore
   bool get goalsEnabled => enabledModules.contains(AppModule.goals.name);
+
+  /// Subtotales del balance parseados de forma segura (descarta entradas
+  /// corruptas). Para escribir, codifica con [BalanceSubtotal.encode].
+  @ignore
+  List<BalanceSubtotal> get subtotals {
+    final result = <BalanceSubtotal>[];
+    for (final raw in balanceSubtotals) {
+      final s = BalanceSubtotal.tryDecode(raw);
+      if (s != null) result.add(s);
+    }
+    return result;
+  }
 
   /// Secciones de la barra inferior parseadas de forma segura. Garantiza que
   /// Ajustes esté siempre presente (y al final), para no perder el acceso.

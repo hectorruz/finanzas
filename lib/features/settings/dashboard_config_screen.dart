@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/icons/app_icons.dart';
+import '../../data/models/app_settings.dart';
 import '../../data/models/enums.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/settings_repository.dart';
@@ -134,6 +136,174 @@ class DashboardConfigScreen extends ConsumerWidget {
                   ids.remove(a.id);
                 }
                 s.totalBalanceAccountIds = ids;
+              }),
+            ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Text('Subtotales del balance',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Totales adicionales que aparecen bajo el balance total, cada uno '
+              'sumando las cuentas o subcuentas que elijas.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
+          for (final (i, st) in settings.subtotals.indexed)
+            ListTile(
+              leading: const Icon(Icons.functions),
+              title: Text(st.name.isEmpty ? '(sin nombre)' : st.name),
+              subtitle: Text(
+                  '${st.accountIds.length} ${st.accountIds.length == 1 ? 'cuenta' : 'cuentas'}'),
+              onTap: () => _editSubtotal(context, repo, index: i, initial: st),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Eliminar',
+                onPressed: () => repo.update((s) {
+                  final list = [...s.subtotals]..removeAt(i);
+                  s.balanceSubtotals = list.map((e) => e.encode()).toList();
+                }),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: OutlinedButton.icon(
+              onPressed: () => _editSubtotal(context, repo),
+              icon: const Icon(Icons.add),
+              label: const Text('Añadir subtotal'),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  /// Abre el editor de subtotal; si [index] es null crea uno nuevo, si no lo
+  /// reemplaza en esa posición.
+  Future<void> _editSubtotal(
+    BuildContext context,
+    SettingsRepository repo, {
+    int? index,
+    BalanceSubtotal? initial,
+  }) async {
+    final result = await Navigator.of(context).push<BalanceSubtotal>(
+      MaterialPageRoute(
+        builder: (_) => _SubtotalEditorScreen(initial: initial),
+      ),
+    );
+    if (result == null) return;
+    await repo.update((s) {
+      final list = [...s.subtotals];
+      if (index == null) {
+        list.add(result);
+      } else {
+        list[index] = result;
+      }
+      s.balanceSubtotals = list.map((e) => e.encode()).toList();
+    });
+  }
+}
+
+/// Editor de un subtotal del balance: nombre y cuentas/subcuentas que suma.
+class _SubtotalEditorScreen extends ConsumerStatefulWidget {
+  const _SubtotalEditorScreen({this.initial});
+
+  final BalanceSubtotal? initial;
+
+  @override
+  ConsumerState<_SubtotalEditorScreen> createState() =>
+      _SubtotalEditorScreenState();
+}
+
+class _SubtotalEditorScreenState extends ConsumerState<_SubtotalEditorScreen> {
+  late final TextEditingController _nameController;
+  late final Set<int> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.initial?.name ?? '');
+    _selected = {...?widget.initial?.accountIds};
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    Navigator.of(context).pop(
+      BalanceSubtotal(
+        name: _nameController.text.trim(),
+        accountIds: _selected.toList(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accounts = ref.watch(accountsProvider).valueOrNull ?? const [];
+    final entries = flattenAccounts(accounts);
+    final canSave =
+        _nameController.text.trim().isNotEmpty && _selected.isNotEmpty;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+            widget.initial == null ? 'Nuevo subtotal' : 'Editar subtotal'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            tooltip: 'Guardar',
+            onPressed: canSave ? _save : null,
+          ),
+        ],
+      ),
+      body: ListView(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: TextField(
+              controller: _nameController,
+              textCapitalization: TextCapitalization.sentences,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Nombre del subtotal',
+                hintText: 'p. ej. Ahorros, Efectivo…',
+                prefixIcon: Icon(Icons.functions),
+              ),
+            ),
+          ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text('Cuentas a sumar',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          if (accounts.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('No hay cuentas.'),
+            ),
+          for (final entry in entries)
+            CheckboxListTile(
+              contentPadding:
+                  EdgeInsets.only(left: 16 + entry.depth * 24.0, right: 16),
+              secondary: Icon(iconByName(entry.value.iconName),
+                  color: Color(entry.value.colorValue)),
+              title: Text(entry.value.name),
+              value: _selected.contains(entry.value.id),
+              onChanged: (checked) => setState(() {
+                if (checked ?? false) {
+                  _selected.add(entry.value.id);
+                } else {
+                  _selected.remove(entry.value.id);
+                }
               }),
             ),
           const SizedBox(height: 24),

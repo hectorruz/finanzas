@@ -28,6 +28,34 @@ final totalBalanceProvider = FutureProvider<int>((ref) async {
   return total;
 });
 
+/// Un subtotal del balance ya calculado: su nombre y la suma de sus cuentas.
+class BalanceSubtotalValue {
+  const BalanceSubtotalValue({required this.name, required this.cents});
+  final String name;
+  final int cents;
+}
+
+/// Subtotales configurados en ajustes, con el saldo sumado de sus cuentas.
+/// Aparecen bajo el balance total en la tarjeta correspondiente.
+final balanceSubtotalsProvider =
+    FutureProvider<List<BalanceSubtotalValue>>((ref) async {
+  ref.watch(transactionsChangedProvider);
+  final accountRepo = ref.watch(accountRepositoryProvider);
+  final settings = ref.watch(currentSettingsProvider);
+  final subtotals = settings.subtotals;
+  if (subtotals.isEmpty) return const [];
+
+  final results = <BalanceSubtotalValue>[];
+  for (final st in subtotals) {
+    var total = 0;
+    for (final id in st.accountIds) {
+      total += await accountRepo.balanceCents(id);
+    }
+    results.add(BalanceSubtotalValue(name: st.name, cents: total));
+  }
+  return results;
+});
+
 /// Comparativa de gastos del mes actual frente al mes anterior.
 class MonthComparison {
   final int currentExpense;
