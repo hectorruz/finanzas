@@ -58,6 +58,28 @@ cp build/app/outputs/flutter-apk/app-release.apk \
    ~/Documentos/finanzas/finanzas-$(git rev-parse --short HEAD).apk
 ```
 
+### Signing (release keystore)
+
+The release build is signed with a **stable, persistent keystore** so that every
+APK can update the previous install (same signing certificate) regardless of the
+machine. Config in `android/app/build.gradle.kts` reads `android/key.properties`;
+if that file is missing (e.g. CI without the keystore) it falls back to the debug
+key. Both the keystore and `key.properties` are **git-ignored** (`**/*.keystore`,
+`android/key.properties`) and must be kept out of the repo.
+
+- Keystore: `android/app/finanzas.keystore` (alias `finanzas`).
+- `android/key.properties`: `storePassword`, `keyPassword`, `keyAlias=finanzas`,
+  `storeFile=finanzas.keystore`.
+
+**Critical:** back up `finanzas.keystore` + `key.properties` somewhere safe. If they
+are lost, no future build can update an installed app — users would have to uninstall
+(losing local data) and reinstall. To sign with the same identity on another machine
+or in CI, copy these two files (in CI, inject them from secrets).
+
+If the keystore ever changes (or a build was made with the debug key), Android shows
+"install" instead of "update": export a JSON backup from the app, uninstall, install
+the new APK, then re-import.
+
 ## Architecture
 
 **Feature-first** structure under `lib/`:
