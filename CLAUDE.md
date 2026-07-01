@@ -45,6 +45,19 @@ flutter build apk --release
 dart run build_runner build --delete-conflicting-outputs  # regenerate *.g.dart after model changes
 ```
 
+## Building the APK
+
+Always commit first, then build the release APK and copy it to `~/Documentos/finanzas/`
+named `finanzas-<commit>.apk`, where `<commit>` is the short hash of the commit that
+produced it:
+
+```bash
+flutter build apk --release
+mkdir -p ~/Documentos/finanzas
+cp build/app/outputs/flutter-apk/app-release.apk \
+   ~/Documentos/finanzas/finanzas-$(git rev-parse --short HEAD).apk
+```
+
 ## Architecture
 
 **Feature-first** structure under `lib/`:

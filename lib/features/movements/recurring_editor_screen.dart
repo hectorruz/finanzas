@@ -4,13 +4,13 @@ import 'package:intl/intl.dart';
 import 'package:isar_community/isar.dart';
 
 import '../../core/db/isar_provider.dart';
-import '../../data/models/category.dart';
 import '../../data/models/enums.dart';
 import '../../data/models/recurring_rule.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/recurring_repository.dart';
 import '../../shared/widgets/amount_field.dart';
+import '../../shared/widgets/entity_picker_field.dart';
 
 class RecurringEditorScreen extends ConsumerStatefulWidget {
   const RecurringEditorScreen({super.key, this.ruleId});
@@ -198,23 +198,26 @@ class _RecurringEditorScreenState
                     ],
                   ),
                   const SizedBox(height: 16),
-                  if (_type != TransactionType.transfer)
-                    _CategoryField(
-                      categories: categories,
+                  if (_type != TransactionType.transfer) ...[
+                    EntityPickerField(
+                      items: PickerItem.fromCategories(categories),
                       value: _categoryId,
                       onChanged: (v) => setState(() => _categoryId = v),
+                      labelText: 'Categoría',
+                      sheetTitle: 'Selecciona categoría',
+                      prefixIcon: Icons.category,
+                      allowNone: true,
                     ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<int>(
+                    const SizedBox(height: 16),
+                  ],
+                  EntityPickerField(
+                    items: PickerItem.fromAccounts(accounts),
                     value: _accountId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Cuenta'),
-                    items: [
-                      for (final a in accounts)
-                        DropdownMenuItem(
-                            value: a.id, child: Text(a.name)),
-                    ],
                     onChanged: (v) => setState(() => _accountId = v),
+                    labelText: 'Cuenta',
+                    sheetTitle: 'Selecciona cuenta',
+                    prefixIcon: Icons.account_balance_wallet,
+                    validator: (v) => v == null ? 'Selecciona una cuenta' : null,
                   ),
                   const SizedBox(height: 16),
                   ListTile(
@@ -258,29 +261,3 @@ class _RecurringEditorScreenState
   }
 }
 
-class _CategoryField extends StatelessWidget {
-  const _CategoryField({
-    required this.categories,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final List<Category> categories;
-  final int? value;
-  final ValueChanged<int?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final hasValue = categories.any((c) => c.id == value);
-    return DropdownButtonFormField<int>(
-      value: hasValue ? value : null,
-      isExpanded: true,
-      decoration: const InputDecoration(labelText: 'Categoría'),
-      items: [
-        for (final c in categories)
-          DropdownMenuItem(value: c.id, child: Text(c.name)),
-      ],
-      onChanged: onChanged,
-    );
-  }
-}

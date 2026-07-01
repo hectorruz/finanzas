@@ -3,9 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/icons/app_icons.dart';
 import '../../core/theme/app_theme.dart';
-import '../../data/models/category.dart';
 import '../../data/models/enums.dart';
 import '../../data/models/transaction.dart';
 import '../../data/repositories/account_repository.dart';
@@ -13,6 +11,7 @@ import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/amount_field.dart';
+import '../../shared/widgets/entity_picker_field.dart';
 
 /// App mínima y translúcida para el popup de alta rápida (tile de Android).
 /// No monta la app completa ni el bloqueo: solo un diálogo para ingreso/gasto.
@@ -179,37 +178,23 @@ class _QuickAddPopupState extends ConsumerState<QuickAddPopup> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<int>(
+                      EntityPickerField(
+                        items: PickerItem.fromAccounts(accounts),
                         value: _accountId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Cuenta',
-                          prefixIcon: Icon(Icons.account_balance_wallet),
-                        ),
-                        items: [
-                          for (final a in accounts)
-                            DropdownMenuItem<int>(
-                              value: a.id,
-                              child: Text(a.name),
-                            ),
-                        ],
                         onChanged: (v) => setState(() => _accountId = v),
+                        labelText: 'Cuenta',
+                        sheetTitle: 'Selecciona cuenta',
+                        prefixIcon: Icons.account_balance_wallet,
                       ),
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<int>(
-                        value: categories.any((c) => c.id == _categoryId)
-                            ? _categoryId
-                            : null,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Categoría (opcional)',
-                          prefixIcon: Icon(Icons.category),
-                        ),
-                        items: [
-                          for (final e in flattenCategories(categories))
-                            _catItem(e.value, e.depth),
-                        ],
+                      EntityPickerField(
+                        items: PickerItem.fromCategories(categories),
+                        value: _categoryId,
                         onChanged: (v) => setState(() => _categoryId = v),
+                        labelText: 'Categoría (opcional)',
+                        sheetTitle: 'Selecciona categoría',
+                        prefixIcon: Icons.category,
+                        allowNone: true,
                       ),
                       const SizedBox(height: 20),
                       FilledButton.icon(
@@ -230,16 +215,4 @@ class _QuickAddPopupState extends ConsumerState<QuickAddPopup> {
       ),
     );
   }
-
-  DropdownMenuItem<int> _catItem(Category c, int depth) => DropdownMenuItem<int>(
-        value: c.id,
-        child: Row(
-          children: [
-            if (depth > 0) SizedBox(width: depth * 20.0),
-            Icon(iconByName(c.iconName), size: 18, color: Color(c.colorValue)),
-            const SizedBox(width: 8),
-            Flexible(child: Text(c.name, overflow: TextOverflow.ellipsis)),
-          ],
-        ),
-      );
 }

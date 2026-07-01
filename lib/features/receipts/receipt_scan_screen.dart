@@ -13,6 +13,7 @@ import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/receipt_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/amount_field.dart';
+import '../../shared/widgets/entity_picker_field.dart';
 import 'ocr_service.dart';
 
 /// Captura una imagen de un ticket, ejecuta OCR y permite editar y guardar los
@@ -204,22 +205,17 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
               },
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<int>(
-              value: categories.any((c) => c.id == _categoryId)
-                  ? _categoryId
-                  : null,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: 'Categoría',
-                helperText: _suggestedCategory != null
-                    ? 'Sugerida: $_suggestedCategory'
-                    : null,
-              ),
-              items: [
-                for (final c in categories)
-                  DropdownMenuItem(value: c.id, child: Text(c.name)),
-              ],
+            EntityPickerField(
+              items: PickerItem.fromCategories(categories),
+              value: _categoryId,
               onChanged: (v) => setState(() => _categoryId = v),
+              labelText: 'Categoría',
+              sheetTitle: 'Selecciona categoría',
+              prefixIcon: Icons.category,
+              allowNone: true,
+              helperText: _suggestedCategory != null
+                  ? 'Sugerida: $_suggestedCategory'
+                  : null,
             ),
             const SizedBox(height: 8),
             SwitchListTile(

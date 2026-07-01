@@ -2,14 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/icons/app_icons.dart';
-import '../../data/models/category.dart';
 import '../../data/models/enums.dart';
 import '../../data/models/transaction.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/amount_field.dart';
+import '../../shared/widgets/entity_picker_field.dart';
 
 /// Alta/edición de un movimiento (ingreso, gasto o transferencia).
 class MovementEditorScreen extends ConsumerStatefulWidget {
@@ -181,28 +180,38 @@ class _MovementEditorScreenState extends ConsumerState<MovementEditorScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _AccountDropdown(
-                    label: _type == TransactionType.transfer
-                        ? 'Cuenta origen'
-                        : 'Cuenta',
-                    accounts: accounts,
+                  EntityPickerField(
+                    items: PickerItem.fromAccounts(accounts),
                     value: _accountId,
                     onChanged: (v) => setState(() => _accountId = v),
+                    labelText: _type == TransactionType.transfer
+                        ? 'Cuenta origen'
+                        : 'Cuenta',
+                    sheetTitle: 'Selecciona cuenta',
+                    prefixIcon: Icons.account_balance_wallet,
+                    validator: (v) =>
+                        v == null ? 'Selecciona una cuenta' : null,
                   ),
                   if (_type == TransactionType.transfer) ...[
                     const SizedBox(height: 16),
-                    _AccountDropdown(
-                      label: 'Cuenta destino',
-                      accounts: accounts,
+                    EntityPickerField(
+                      items: PickerItem.fromAccounts(accounts),
                       value: _toAccountId,
                       onChanged: (v) => setState(() => _toAccountId = v),
+                      labelText: 'Cuenta destino',
+                      sheetTitle: 'Selecciona cuenta',
+                      prefixIcon: Icons.account_balance_wallet,
                     ),
                   ] else ...[
                     const SizedBox(height: 16),
-                    _CategoryDropdown(
-                      categories: categories,
+                    EntityPickerField(
+                      items: PickerItem.fromCategories(categories),
                       value: _categoryId,
                       onChanged: (v) => setState(() => _categoryId = v),
+                      labelText: 'Categoría',
+                      sheetTitle: 'Selecciona categoría',
+                      prefixIcon: Icons.category,
+                      allowNone: true,
                     ),
                   ],
                   const SizedBox(height: 16),
@@ -250,91 +259,5 @@ class _MovementEditorScreenState extends ConsumerState<MovementEditorScreen> {
       lastDate: DateTime(2100),
     );
     if (picked != null) setState(() => _date = picked);
-  }
-}
-
-class _AccountDropdown extends StatelessWidget {
-  const _AccountDropdown({
-    required this.label,
-    required this.accounts,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String label;
-  final List accounts;
-  final int? value;
-  final ValueChanged<int?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonFormField<int>(
-      value: value,
-      isExpanded: true,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: const Icon(Icons.account_balance_wallet),
-      ),
-      items: [
-        for (final a in accounts)
-          DropdownMenuItem<int>(
-            value: a.id as int,
-            child: Row(
-              children: [
-                Icon(iconByName(a.iconName),
-                    size: 18, color: Color(a.colorValue as int)),
-                const SizedBox(width: 8),
-                Text(a.name as String),
-              ],
-            ),
-          ),
-      ],
-      validator: (v) => v == null ? 'Selecciona una cuenta' : null,
-      onChanged: onChanged,
-    );
-  }
-}
-
-class _CategoryDropdown extends StatelessWidget {
-  const _CategoryDropdown({
-    required this.categories,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final List<Category> categories;
-  final int? value;
-  final ValueChanged<int?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final hasValue = categories.any((c) => c.id == value);
-    return DropdownButtonFormField<int>(
-      value: hasValue ? value : null,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        labelText: 'Categoría',
-        prefixIcon: Icon(Icons.category),
-      ),
-      items: [
-        for (final e in flattenCategories(categories))
-          _item(e.value, depth: e.depth),
-      ],
-      onChanged: onChanged,
-    );
-  }
-
-  DropdownMenuItem<int> _item(Category c, {required int depth}) {
-    return DropdownMenuItem<int>(
-      value: c.id,
-      child: Row(
-        children: [
-          if (depth > 0) SizedBox(width: depth * 20.0),
-          Icon(iconByName(c.iconName), size: 18, color: Color(c.colorValue)),
-          const SizedBox(width: 8),
-          Flexible(child: Text(c.name, overflow: TextOverflow.ellipsis)),
-        ],
-      ),
-    );
   }
 }
