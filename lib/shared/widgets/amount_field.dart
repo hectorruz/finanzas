@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/money/money.dart';
+import 'calculator_sheet.dart';
 
 /// Campo de texto para introducir importes en euros.
 ///
@@ -47,6 +48,17 @@ class _AmountFieldState extends State<AmountField> {
     super.dispose();
   }
 
+  Future<void> _openCalculator() async {
+    final cents = await showCalculatorSheet(
+      context,
+      initialCents: Money.parseToCents(_controller.text),
+    );
+    if (cents == null || !mounted) return;
+    final text = (cents / 100).toStringAsFixed(2).replaceAll('.', ',');
+    setState(() => _controller.text = text);
+    widget.onChangedCents(cents);
+  }
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
@@ -60,6 +72,11 @@ class _AmountFieldState extends State<AmountField> {
         labelText: widget.label,
         suffixText: '€',
         prefixIcon: const Icon(Icons.euro),
+        suffixIcon: IconButton(
+          icon: const Icon(Icons.calculate_outlined),
+          tooltip: 'Calculadora',
+          onPressed: _openCalculator,
+        ),
       ),
       validator: (value) {
         final text = value ?? '';

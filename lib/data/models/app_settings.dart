@@ -101,8 +101,10 @@ class AppSettings {
 
   // --- Acceso tipado seguro (directiva de calidad #2) ---
 
+  /// El módulo de objetivos está siempre disponible: se muestra u oculta
+  /// añadiéndolo o quitándolo de la barra inferior (no hay interruptor propio).
   @ignore
-  bool get goalsEnabled => enabledModules.contains(AppModule.goals.name);
+  bool get goalsEnabled => true;
 
   /// Subtotales del balance parseados de forma segura (descarta entradas
   /// corruptas). Para escribir, codifica con [BalanceSubtotal.encode].

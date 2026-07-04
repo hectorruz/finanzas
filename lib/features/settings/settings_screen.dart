@@ -8,8 +8,6 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/router/app_router.dart';
 import '../../data/backup_service.dart';
-import '../../data/models/app_settings.dart';
-import '../../data/models/enums.dart';
 import '../../data/repositories/recurring_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../shared/widgets/icon_color_picker.dart';
@@ -88,16 +86,6 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => context.push(Routes.navConfig),
           ),
           const Divider(),
-          const _SectionHeader('Módulos'),
-          SwitchListTile(
-            secondary: const Icon(Icons.flag),
-            title: const Text('Objetivos'),
-            value: settings.goalsEnabled,
-            onChanged: (v) => repo.update((s) {
-              _toggleModule(s, AppModule.goals, v);
-            }),
-          ),
-          const Divider(),
           const _SectionHeader('Organización'),
           ListTile(
             leading: const Icon(Icons.account_balance_wallet),
@@ -123,15 +111,14 @@ class SettingsScreen extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push(Routes.dashboardConfig),
           ),
-          if (settings.goalsEnabled)
-            ListTile(
-              leading: const Icon(Icons.flag),
-              title: const Text('Objetivos'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const GoalsScreen()),
-              ),
+          ListTile(
+            leading: const Icon(Icons.flag),
+            title: const Text('Objetivos'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const GoalsScreen()),
             ),
+          ),
           const Divider(),
           const _SectionHeader('Seguridad'),
           SwitchListTile(
@@ -175,15 +162,6 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  void _toggleModule(AppSettings s, AppModule module, bool enabled) {
-    // Copia crecible: las listas que Isar deserializa pueden ser de longitud
-    // fija, por lo que mutarlas in-place con add/remove lanzaría una excepción.
-    final modules = [...s.enabledModules];
-    modules.remove(module.name);
-    if (enabled) modules.add(module.name);
-    s.enabledModules = modules;
   }
 
   String _themeLabel(String mode) => switch (mode) {

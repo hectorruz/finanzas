@@ -19,7 +19,11 @@ import 'ocr_service.dart';
 /// Captura una imagen de un ticket, ejecuta OCR y permite editar y guardar los
 /// datos detectados (todo editable antes de confirmar).
 class ReceiptScanScreen extends ConsumerStatefulWidget {
-  const ReceiptScanScreen({super.key});
+  const ReceiptScanScreen({super.key, this.autoStartCamera = false});
+
+  /// Abre la cámara automáticamente al entrar (útil desde el acceso rápido:
+  /// un toque hace la foto y luego se editan los detalles).
+  final bool autoStartCamera;
 
   @override
   ConsumerState<ReceiptScanScreen> createState() => _ReceiptScanScreenState();
@@ -28,6 +32,16 @@ class ReceiptScanScreen extends ConsumerStatefulWidget {
 class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
   final _picker = ImagePicker();
   final _merchantController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoStartCamera) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _pick(ImageSource.camera);
+      });
+    }
+  }
 
   String? _imagePath;
   bool _processing = false;
@@ -119,7 +133,7 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
       ..transactionId = transactionId;
     await ref.read(receiptRepositoryProvider).save(receipt);
 
-    if (mounted) Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop(true);
   }
 
   @override

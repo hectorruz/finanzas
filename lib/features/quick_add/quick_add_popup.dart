@@ -12,6 +12,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/amount_field.dart';
 import '../../shared/widgets/entity_picker_field.dart';
+import '../receipts/receipt_scan_screen.dart';
 
 /// App mínima y translúcida para el popup de alta rápida (tile de Android).
 /// No monta la app completa ni el bloqueo: solo un diálogo para ingreso/gasto.
@@ -77,6 +78,17 @@ class _QuickAddPopupState extends ConsumerState<QuickAddPopup> {
   }
 
   void _close() => SystemNavigator.pop();
+
+  /// Abre el escáner de tickets (hace la foto y permite editar los detalles).
+  /// Si se guarda un ticket, cierra el popup.
+  Future<void> _scanReceipt() async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const ReceiptScanScreen(autoStartCamera: true),
+      ),
+    );
+    if (saved == true) _close();
+  }
 
   Future<void> _save(List<dynamic> accounts) async {
     if (_cents == null || _cents! <= 0) return;
@@ -202,6 +214,15 @@ class _QuickAddPopupState extends ConsumerState<QuickAddPopup> {
                         icon: const Icon(Icons.check),
                         label: const Text('Guardar'),
                         style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _saving ? null : _scanReceipt,
+                        icon: const Icon(Icons.receipt_long),
+                        label: const Text('Escanear ticket'),
+                        style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(48),
                         ),
                       ),
