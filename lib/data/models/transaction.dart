@@ -46,8 +46,11 @@ class TransactionModel {
 
   TransactionModel();
 
-  /// Importe con signo según el tipo (negativo para gastos).
+  /// Importe con signo según el efecto sobre la cuenta propietaria ([accountId]).
+  /// Solo un ingreso suma; un gasto resta y una transferencia también resta,
+  /// porque [accountId] es siempre la cuenta de origen (el dinero sale de ella).
+  /// La cuenta destino de una transferencia lo suma aparte en el cálculo de saldo.
   @ignore
   int get signedCents =>
-      type == TransactionType.expense ? -amountCents : amountCents;
+      type == TransactionType.income ? amountCents : -amountCents;
 }
