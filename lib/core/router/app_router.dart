@@ -80,7 +80,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: Routes.receiptScan,
-        builder: (_, __) => const ReceiptScanScreen(),
+        builder: (_, state) => ReceiptScanScreen(receiptId: _intExtra(state)),
       ),
       GoRoute(
         path: Routes.dashboardConfig,

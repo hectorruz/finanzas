@@ -25,6 +25,9 @@ class Receipt {
 
   int? categoryId;
 
+  /// Cuenta usada en la compra (editable). Puede ser nula en tickets antiguos.
+  int? accountId;
+
   /// Id del movimiento de gasto creado a partir del ticket, si se generó.
   int? transactionId;
 

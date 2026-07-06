@@ -8,6 +8,7 @@ import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/money_text.dart';
+import 'movement_detail_sheet.dart';
 import 'movements_filter_sheet.dart';
 import 'transaction_tile.dart';
 
@@ -151,8 +152,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                               if (_selecting) {
                                 _toggle(t.id);
                               } else {
-                                context.push(Routes.movementEditor,
-                                    extra: t.id);
+                                showMovementDetailSheet(context, t.id);
                               }
                             },
                             onLongPress: () => _toggle(t.id),

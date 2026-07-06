@@ -12,6 +12,7 @@ import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/money_text.dart';
 import '../accounts/account_editor_screen.dart';
 import '../home_shell.dart';
+import '../movements/movement_detail_sheet.dart';
 import '../movements/transaction_tile.dart';
 import '../settings/goals_screen.dart';
 import 'dashboard_providers.dart';
@@ -370,10 +371,7 @@ class _RecentMovementsCard extends ConsumerWidget {
                       TransactionTile(
                         txn: t,
                         dense: true,
-                        onTap: () => context.push(
-                          Routes.movementEditor,
-                          extra: t.id,
-                        ),
+                        onTap: () => showMovementDetailSheet(context, t.id),
                       ),
                   ],
                 );

@@ -206,3 +206,10 @@ final recentTransactionsProvider =
   ref.watch(transactionsChangedProvider);
   return ref.watch(transactionRepositoryProvider).recent(limit: 8);
 });
+
+/// Movimiento individual por id, reactivo (se refresca al volver del editor).
+final transactionByIdProvider =
+    FutureProvider.family<TransactionModel?, int>((ref, id) async {
+  ref.watch(transactionsChangedProvider);
+  return ref.watch(transactionRepositoryProvider).getById(id);
+});

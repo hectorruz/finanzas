@@ -18,12 +18,18 @@ class ReceiptRepository {
   Future<List<Receipt>> all() =>
       _isar.receipts.where().sortByDateDesc().findAll();
 
+  Future<Receipt?> getById(int id) => _isar.receipts.get(id);
+
   Future<int> save(Receipt receipt) {
     return _isar.writeTxn(() => _isar.receipts.put(receipt));
   }
 
   Future<void> delete(int id) {
     return _isar.writeTxn(() => _isar.receipts.delete(id));
+  }
+
+  Future<void> deleteMany(List<int> ids) {
+    return _isar.writeTxn(() => _isar.receipts.deleteAll(ids));
   }
 }
 
@@ -34,6 +40,12 @@ final receiptRepositoryProvider = Provider<ReceiptRepository>(
 final receiptsProvider = StreamProvider<List<Receipt>>(
   (ref) => ref.watch(receiptRepositoryProvider).watchAll(),
 );
+
+/// Ticket individual por id, reactivo (se refresca al cambiar la lista).
+final receiptByIdProvider = FutureProvider.family<Receipt?, int>((ref, id) {
+  ref.watch(receiptsProvider);
+  return ref.watch(receiptRepositoryProvider).getById(id);
+});
 
 /// Estadísticas de gasto por comercio (top de comercios donde más se gasta).
 final merchantStatsProvider =
