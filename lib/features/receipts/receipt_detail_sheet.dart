@@ -135,7 +135,8 @@ class _ReceiptDetailView extends ConsumerWidget {
         DetailRow(
           icon: Icons.category_outlined,
           label: 'Categoría',
-          value: category?.name ?? 'Sin categoría',
+          value:
+              categoryFullName(receipt.categoryId, categories, fallback: 'Sin categoría'),
         ),
         DetailRow(
           icon: Icons.account_balance_wallet_outlined,

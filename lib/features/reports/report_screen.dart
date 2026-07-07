@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/report_excel.dart';
 import '../../data/report_pdf.dart';
 import '../../data/report_service.dart';
+import '../../data/models/category.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/settings_repository.dart';
@@ -345,6 +346,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
 
   Future<void> _pickCategories() async {
     final categories = ref.read(categoriesProvider).valueOrNull ?? const [];
+    final byId = {for (final c in categories) c.id: c};
     final selected = {..._config.categoryIds};
     await showModalBottomSheet<void>(
       context: context,
@@ -360,7 +362,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
             ),
             for (final cat in categories)
               CheckboxListTile(
-                title: Text(cat.name),
+                title: Text(categoryFullName(cat.id, byId, fallback: cat.name)),
                 value: selected.contains(cat.id),
                 onChanged: (v) => setSheet(() =>
                     v == true ? selected.add(cat.id) : selected.remove(cat.id)),

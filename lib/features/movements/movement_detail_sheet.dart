@@ -137,7 +137,8 @@ class _MovementDetailView extends ConsumerWidget {
           DetailRow(
             icon: Icons.category_outlined,
             label: 'Categoría',
-            value: category.name,
+            value: categoryFullName(txn.categoryId, categories,
+                fallback: category.name),
           ),
         if (account != null)
           DetailRow(

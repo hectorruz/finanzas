@@ -33,6 +33,8 @@ class TransactionTile extends ConsumerWidget {
 
     final category =
         txn.categoryId != null ? categories[txn.categoryId] : null;
+    final categoryFull =
+        category != null ? categoryFullName(txn.categoryId, categories) : null;
     final account = accounts[txn.accountId];
 
     final isExpense = txn.type == TransactionType.expense;
@@ -55,7 +57,7 @@ class TransactionTile extends ConsumerWidget {
     final amountPrefix = isTransfer ? '' : (isExpense ? '-' : '+');
 
     final subtitleParts = <String>[
-      if (category != null) category.name,
+      if (categoryFull != null) categoryFull,
       if (account != null) account.name,
       DateFormat('d MMM', 'es').format(txn.date),
     ];

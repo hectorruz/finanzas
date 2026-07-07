@@ -471,7 +471,10 @@ class ReportService {
     allAccounts.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     final categories = await _isar.categories.where().findAll();
     final accountNames = {for (final a in allAccounts) a.id: a.name};
-    final categoryNames = {for (final c in categories) c.id: c.name};
+    final categoriesById = {for (final c in categories) c.id: c};
+    final categoryNames = {
+      for (final c in categories) c.id: categoryFullName(c.id, categoriesById)
+    };
 
     // Cuentas a listar en saldos/análisis por cuenta.
     final listedAccounts = allAccounts

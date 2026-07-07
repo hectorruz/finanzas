@@ -47,6 +47,22 @@ class PickerItem {
       ];
 }
 
+/// Ruta completa de un ítem dentro de su jerarquía, p. ej. `Alimentación · Casa`
+/// para una subcategoría, de modo que el valor seleccionado no sea ambiguo.
+String _qualifiedName(PickerItem item, List<PickerItem> items) {
+  final byId = {for (final i in items) i.id: i};
+  final parts = <String>[item.name];
+  var parentId = item.parentId;
+  final seen = <int>{item.id};
+  while (parentId != null && seen.add(parentId)) {
+    final parent = byId[parentId];
+    if (parent == null) break;
+    parts.add(parent.name);
+    parentId = parent.parentId;
+  }
+  return parts.reversed.join(' · ');
+}
+
 /// Campo de formulario que abre una hoja inferior modal (estilo nativo Android)
 /// para elegir una cuenta o categoría dentro de una jerarquía plegable, con
 /// búsqueda. Sustituye al desplegable `DropdownButtonFormField`.
@@ -81,6 +97,8 @@ class EntityPickerField extends FormField<int?> {
                 }
               }
             }
+            final selectedLabel =
+                selected == null ? null : _qualifiedName(selected, items);
 
             Future<void> open() async {
               final result = await showModalBottomSheet<_PickerResult>(
@@ -118,7 +136,7 @@ class EntityPickerField extends FormField<int?> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          selected.name,
+                          selectedLabel ?? selected.name,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
