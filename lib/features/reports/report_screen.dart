@@ -6,9 +6,12 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/report_excel.dart';
 import '../../data/report_pdf.dart';
 import '../../data/report_service.dart';
+import '../../data/repositories/account_repository.dart';
+import '../../data/repositories/category_repository.dart';
+import '../../data/repositories/settings_repository.dart';
 
 /// Pantalla para generar un informe descargable (PDF / Excel) de un tramo de
-/// fechas, eligiendo qué secciones incluir.
+/// fechas, eligiendo qué secciones incluir, cómo ordenarlas y qué filtrar.
 class ReportScreen extends ConsumerStatefulWidget {
   const ReportScreen({super.key});
 
@@ -19,11 +22,7 @@ class ReportScreen extends ConsumerStatefulWidget {
 class _ReportScreenState extends ConsumerState<ReportScreen> {
   late DateTime _from;
   late DateTime _to;
-  bool _movements = true;
-  bool _balance = true;
-  bool _evolution = true;
-  EvolutionGranularity _granularity = EvolutionGranularity.monthly;
-  ReportFlow _flow = ReportFlow.both;
+  ReportConfig _config = const ReportConfig();
   bool _busy = false;
 
   @override
@@ -32,14 +31,40 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     final now = DateTime.now();
     _from = DateTime(now.year, now.month, 1);
     _to = DateTime(now.year, now.month + 1, 0);
+    _loadConfig();
+  }
+
+  Future<void> _loadConfig() async {
+    final settings = await ref.read(settingsRepositoryProvider).getOrCreate();
+    if (!mounted) return;
+    setState(() => _config = ReportConfig.decode(settings.reportConfig));
+  }
+
+  /// Actualiza la config en pantalla y la persiste (para recordarla).
+  void _update(ReportConfig c) {
+    setState(() => _config = c);
+    ref
+        .read(settingsRepositoryProvider)
+        .update((s) => s.reportConfig = c.encode());
   }
 
   final _df = DateFormat('d MMM yyyy', 'es');
 
-  bool get _anySection => _movements || _balance || _evolution;
+  bool get _anySection => _config.dashboardPage ||
+      _config.balance ||
+      _config.evolution ||
+      _config.movements ||
+      _config.incomeByCategory ||
+      _config.expenseByAccount ||
+      _config.incomeByAccount ||
+      _config.accountUsage ||
+      _config.topConcepts ||
+      _config.comparison ||
+      _config.averages;
 
   @override
   Widget build(BuildContext context) {
+    final c = _config;
     return Scaffold(
       appBar: AppBar(title: const Text('Generar informe')),
       body: AbsorbPointer(
@@ -47,6 +72,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
         child: ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
+            // --- Periodo ---
             const _SectionHeader('Periodo'),
             ListTile(
               leading: const Icon(Icons.date_range),
@@ -67,6 +93,8 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
               ),
             ),
             const Divider(),
+
+            // --- Tipo de movimiento ---
             const _SectionHeader('Tipo de movimiento'),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -84,63 +112,155 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       label: Text('Gastos'),
                       icon: Icon(Icons.north_east),
                     ),
-                    ButtonSegment(
-                      value: ReportFlow.both,
-                      label: Text('Ambos'),
-                    ),
+                    ButtonSegment(value: ReportFlow.both, label: Text('Ambos')),
                   ],
-                  selected: {_flow},
-                  onSelectionChanged: (s) => setState(() => _flow = s.first),
+                  selected: {c.flow},
+                  onSelectionChanged: (s) =>
+                      _update(c.copyWith(flow: s.first)),
                 ),
               ),
             ),
             const Divider(),
-            const _SectionHeader('Incluir en el informe'),
-            CheckboxListTile(
-              title: const Text('Movimientos'),
-              subtitle: const Text('Listado detallado del periodo'),
-              value: _movements,
-              onChanged: (v) => setState(() => _movements = v ?? false),
-            ),
-            CheckboxListTile(
-              title: const Text('Balance'),
-              subtitle: const Text('Resumen, saldo por cuenta y gasto por categoría'),
-              value: _balance,
-              onChanged: (v) => setState(() => _balance = v ?? false),
-            ),
-            CheckboxListTile(
-              title: const Text('Evolución'),
-              subtitle: const Text('Ingresos y gastos por periodo'),
-              value: _evolution,
-              onChanged: (v) => setState(() => _evolution = v ?? false),
-            ),
-            if (_evolution)
+
+            // --- Secciones ---
+            const _SectionHeader('Secciones a incluir'),
+            _sectionTile('Portada resumen (dashboard)',
+                'KPIs destacados y gráfico', c.dashboardPage,
+                (v) => _update(c.copyWith(dashboardPage: v))),
+            _sectionTile('Balance', 'Resumen, saldo por cuenta y gasto por categoría',
+                c.balance, (v) => _update(c.copyWith(balance: v))),
+            _sectionTile('Ingreso por categoría', 'De dónde vienen tus ingresos',
+                c.incomeByCategory, (v) => _update(c.copyWith(incomeByCategory: v))),
+            _sectionTile('Gasto por cuenta', 'Cuánto gastas desde cada cuenta',
+                c.expenseByAccount, (v) => _update(c.copyWith(expenseByAccount: v))),
+            _sectionTile('Ingreso por cuenta', 'Cuánto ingresas en cada cuenta',
+                c.incomeByAccount, (v) => _update(c.copyWith(incomeByAccount: v))),
+            _sectionTile('Cuenta más usada', 'Nº de movimientos y volumen por cuenta',
+                c.accountUsage, (v) => _update(c.copyWith(accountUsage: v))),
+            _sectionTile('Dónde más gastas', 'Ranking de conceptos con más gasto',
+                c.topConcepts, (v) => _update(c.copyWith(topConcepts: v))),
+            _sectionTile('Comparativa', 'Variación frente al periodo anterior',
+                c.comparison, (v) => _update(c.copyWith(comparison: v))),
+            _sectionTile('Medias y récords', 'Gasto medio, mayor gasto e ingreso',
+                c.averages, (v) => _update(c.copyWith(averages: v))),
+            _sectionTile('Evolución', 'Ingresos y gastos por periodo',
+                c.evolution, (v) => _update(c.copyWith(evolution: v))),
+            _sectionTile('Movimientos', 'Listado detallado del periodo',
+                c.movements, (v) => _update(c.copyWith(movements: v))),
+
+            if (c.evolution)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: SegmentedButton<EvolutionGranularity>(
                     segments: const [
                       ButtonSegment(
-                        value: EvolutionGranularity.weekly,
-                        label: Text('Semanal'),
-                      ),
+                          value: EvolutionGranularity.weekly,
+                          label: Text('Semanal')),
                       ButtonSegment(
-                        value: EvolutionGranularity.monthly,
-                        label: Text('Mensual'),
-                      ),
+                          value: EvolutionGranularity.monthly,
+                          label: Text('Mensual')),
                       ButtonSegment(
-                        value: EvolutionGranularity.yearly,
-                        label: Text('Anual'),
-                      ),
+                          value: EvolutionGranularity.yearly,
+                          label: Text('Anual')),
                     ],
-                    selected: {_granularity},
+                    selected: {c.granularity},
                     onSelectionChanged: (s) =>
-                        setState(() => _granularity = s.first),
+                        _update(c.copyWith(granularity: s.first)),
                   ),
                 ),
               ),
             const Divider(),
+
+            // --- Orden ---
+            const _SectionHeader('Orden'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Row(
+                children: [
+                  const Expanded(child: Text('Importes')),
+                  SegmentedButton<AmountSort>(
+                    segments: const [
+                      ButtonSegment(
+                          value: AmountSort.desc,
+                          label: Text('Mayor'),
+                          icon: Icon(Icons.arrow_downward)),
+                      ButtonSegment(
+                          value: AmountSort.asc,
+                          label: Text('Menor'),
+                          icon: Icon(Icons.arrow_upward)),
+                    ],
+                    selected: {c.amountSort},
+                    onSelectionChanged: (s) =>
+                        _update(c.copyWith(amountSort: s.first)),
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              title: const Text('Orden de movimientos'),
+              trailing: DropdownButton<MovementSort>(
+                value: c.movementSort,
+                onChanged: (v) =>
+                    v == null ? null : _update(c.copyWith(movementSort: v)),
+                items: [
+                  for (final m in MovementSort.values)
+                    DropdownMenuItem(value: m, child: Text(m.label)),
+                ],
+              ),
+            ),
+            const Divider(),
+
+            // --- Filtros ---
+            const _SectionHeader('Filtros'),
+            ListTile(
+              leading: const Icon(Icons.account_balance_wallet_outlined),
+              title: const Text('Cuentas'),
+              subtitle: Text(c.accountIds.isEmpty
+                  ? 'Todas'
+                  : '${c.accountIds.length} seleccionadas'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _pickAccounts,
+            ),
+            ListTile(
+              leading: const Icon(Icons.category_outlined),
+              title: const Text('Categorías'),
+              subtitle: Text(c.categoryIds.isEmpty
+                  ? 'Todas'
+                  : '${c.categoryIds.length} seleccionadas'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _pickCategories,
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.archive_outlined),
+              title: const Text('Incluir cuentas archivadas'),
+              value: c.includeArchived,
+              onChanged: (v) => _update(c.copyWith(includeArchived: v)),
+            ),
+            const Divider(),
+
+            // --- Gráficos y detalle (PDF) ---
+            const _SectionHeader('Gráficos y detalle'),
+            SwitchListTile(
+              title: const Text('Gráfico circular (categorías)'),
+              value: c.pieChart,
+              onChanged: (v) => _update(c.copyWith(pieChart: v)),
+            ),
+            SwitchListTile(
+              title: const Text('Gráfico de barras (evolución)'),
+              value: c.barChart,
+              onChanged: (v) => _update(c.copyWith(barChart: v)),
+            ),
+            SwitchListTile(
+              title: const Text('Mostrar porcentajes'),
+              subtitle: const Text('Columna de % del total en las tablas'),
+              value: c.showPercentages,
+              onChanged: (v) => _update(c.copyWith(showPercentages: v)),
+            ),
+            const Divider(),
+
+            // --- Botones ---
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -182,8 +302,75 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     );
   }
 
+  Widget _sectionTile(String title, String subtitle, bool value,
+          ValueChanged<bool> onChanged) =>
+      CheckboxListTile(
+        title: Text(title),
+        subtitle: Text(subtitle),
+        value: value,
+        onChanged: (v) => onChanged(v ?? false),
+      );
+
   Widget _preset(String label, VoidCallback onTap) =>
       ActionChip(label: Text(label), onPressed: onTap);
+
+  Future<void> _pickAccounts() async {
+    final accounts = ref.read(accountsProvider).valueOrNull ?? const [];
+    final selected = {..._config.accountIds};
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Text('Filtrar por cuentas',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            for (final a in accounts)
+              CheckboxListTile(
+                title: Text(a.name),
+                value: selected.contains(a.id),
+                onChanged: (v) => setSheet(() =>
+                    v == true ? selected.add(a.id) : selected.remove(a.id)),
+              ),
+          ],
+        ),
+      ),
+    );
+    _update(_config.copyWith(accountIds: selected.toList()));
+  }
+
+  Future<void> _pickCategories() async {
+    final categories = ref.read(categoriesProvider).valueOrNull ?? const [];
+    final selected = {..._config.categoryIds};
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Text('Filtrar por categorías',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            for (final cat in categories)
+              CheckboxListTile(
+                title: Text(cat.name),
+                value: selected.contains(cat.id),
+                onChanged: (v) => setSheet(() =>
+                    v == true ? selected.add(cat.id) : selected.remove(cat.id)),
+              ),
+          ],
+        ),
+      ),
+    );
+    _update(_config.copyWith(categoryIds: selected.toList()));
+  }
 
   void _thisMonth() {
     final n = DateTime.now();
@@ -236,14 +423,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   Future<void> _generate(_Format format) async {
     setState(() => _busy = true);
     try {
-      final options = ReportOptions(
+      final options = _config.toOptions(
         from: DateTime(_from.year, _from.month, _from.day),
         to: DateTime(_to.year, _to.month, _to.day, 23, 59, 59, 999),
-        movements: _movements,
-        balance: _balance,
-        evolution: _evolution,
-        granularity: _granularity,
-        flow: _flow,
       );
       final data = await ref.read(reportServiceProvider).build(options);
       final file = switch (format) {

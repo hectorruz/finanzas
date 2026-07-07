@@ -97,6 +97,13 @@ class AppSettings {
   /// o el PIN/patrón/contraseña del teléfono) al abrirse y al volver de fondo.
   bool appLockEnabled = false;
 
+  // --- Informe ---
+
+  /// Configuración del generador de informes serializada en JSON (secciones,
+  /// orden, filtros, gráficos). Ver `ReportConfig` en `report_service.dart`.
+  /// El rango de fechas no se guarda aquí (es puntual en cada informe).
+  String reportConfig = '';
+
   AppSettings();
 
   // --- Acceso tipado seguro (directiva de calidad #2) ---

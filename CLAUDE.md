@@ -58,6 +58,10 @@ cp build/app/outputs/flutter-apk/app-release.apk \
    ~/Documentos/finanzas/finanzas-$(git rev-parse --short HEAD).apk
 ```
 
+El Excel del informe se genera con `syncfusion_flutter_xlsio` (≥ 28.2.9, requerido por
+`intl 0.20`). Desde la v28 **no hace falta registrar ninguna clave de licencia**
+(`SyncfusionLicense.registerLicense` está deprecada); XlsIO funciona sin configuración.
+
 ### Signing (release keystore)
 
 The release build is signed with a **stable, persistent keystore** so that every

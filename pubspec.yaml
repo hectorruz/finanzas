@@ -51,7 +51,8 @@ dependencies:
 
   # Informes descargables
   pdf: ^3.11.1
-  excel: ^4.0.6
+  # Excel con formato condicional, autofiltro y congelar cabecera (XlsIO).
+  syncfusion_flutter_xlsio: ^28.2.9
 
   uuid: ^4.4.0
   cupertino_icons: ^1.0.6
