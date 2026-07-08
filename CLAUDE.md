@@ -166,6 +166,29 @@ con la pantalla apagada en Android hace falta un **foreground service**
 `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC`; es el siguiente paso de
 integración nativa. En iOS los servidores en segundo plano están muy restringidos.
 
+### Webapp de escritorio (fase 4)
+
+Usar la app desde el ordenador (`lib/features/web/`, entrypoint `lib/main_web.dart`).
+Es una app Flutter **web aparte**: no abre Isar ni monta `FinanzasApp`; habla con
+el móvil por HTTP con `WebApiClient`, reutilizando el emparejamiento por PIN del
+sync para obtener el token. Está **desacoplada de Isar** (DTOs planos en
+`web_models.dart`; solo reutiliza `enums.dart` y `Money`, que son Dart puro) para
+poder compilar al target web.
+
+La API de datos vive en el servidor del móvil bajo `/api/*` (`data_api.dart`,
+protegida por token) y reutiliza los repositorios de la app, así que las altas y
+borrados desde la web pasan por el **mismo camino de escritura** (sellado de sync,
+soft-delete) que la UI del móvil. `LanSyncServer` añade CORS y puede servir un
+build web estático si se le pasa `webRoot` (`build/web`); por defecto el móvil
+sirve **solo la API** y la webapp se ejecuta en el PC apuntando a la IP del móvil.
+
+Generar el target y ejecutar/compilar la webapp:
+```bash
+flutter create . --platforms=web           # genera web/ (no versionado)
+flutter run -d chrome -t lib/main_web.dart  # desarrollo (apunta a la IP del móvil)
+flutter build web -t lib/main_web.dart      # build en build/web
+```
+
 ### Privacy mode (hide amounts)
 
 `AppSettings.hideAmounts` (toggled by the eye in the dashboard AppBar) masks every monetary value app-wide. Render amounts with `MoneyText` (`lib/shared/widgets/money_text.dart`), which watches `hideAmountsProvider` and shows `kHiddenAmount` when active — prefer it over `Text(Money(x).format())` for on-screen figures.

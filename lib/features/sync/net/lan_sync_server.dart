@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:isar_community/isar.dart';
-import 'package:meta/meta.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/models/sync_peer.dart';
@@ -11,6 +10,7 @@ import '../model/entity_change.dart';
 import '../model/sync_decisions.dart';
 import '../model/sync_plan.dart';
 import '../sync_engine.dart';
+import 'data_api.dart';
 import 'sync_identity.dart';
 import 'sync_protocol.dart';
 
@@ -49,13 +49,20 @@ class LanSyncServer {
     required this.identity,
     required this.pin,
     this.onSession,
+    this.webRoot,
   })  : _isar = isar,
-        _engine = engine;
+        _engine = engine,
+        _dataApi = DataApi(isar);
 
   final Isar _isar;
   final SyncEngine _engine;
+  final DataApi _dataApi;
   final SyncIdentity identity;
   final String pin;
+
+  /// Carpeta con el build de la webapp de escritorio (`build/web`) a servir. Si
+  /// es null o no existe, el servidor solo ofrece la API (sin webapp embebida).
+  final String? webRoot;
 
   /// Se invoca cuando llega un changelog nuevo (para que la UI muestre "revisar").
   final void Function(ReviewSession)? onSession;
@@ -67,7 +74,6 @@ class LanSyncServer {
   int? get port => _server?.port;
 
   /// Sesiones abiertas (solo para tests / diagnóstico).
-  @visibleForTesting
   List<ReviewSession> get debugSessions => _sessions.values.toList();
 
   Future<int> start({int port = SyncProtocol.defaultPort}) async {
@@ -114,25 +120,70 @@ class LanSyncServer {
 
   Future<void> _handle(HttpRequest req) async {
     try {
+      _cors(req);
+      if (req.method == 'OPTIONS') {
+        req.response.statusCode = HttpStatus.noContent;
+        return req.response.close();
+      }
+
       final path = req.uri.path;
+      // Emparejamiento: sin token (autenticado por PIN).
       if (req.method == 'POST' && path == SyncProtocol.pairPath) {
         return await _handlePair(req);
       }
-      // A partir de aquí, todo exige token válido.
-      final peer = await _authenticate(req);
-      if (peer == null) {
-        return _json(req, 401, {'error': 'unauthorized'});
+
+      // API de datos y sync: exigen token válido.
+      if (DataApi.handles(path) || path.startsWith('/sync/')) {
+        final peer = await _authenticate(req);
+        if (peer == null) return _json(req, 401, {'error': 'unauthorized'});
+        if (DataApi.handles(path)) return await _dataApi.handle(req);
+        if (req.method == 'POST' && path == SyncProtocol.changelogPath) {
+          return await _handleChangelog(req, peer);
+        }
+        if (req.method == 'GET' && path.startsWith('/sync/session/')) {
+          return _handleSession(req, path.substring('/sync/session/'.length));
+        }
+        return _json(req, 404, {'error': 'not_found'});
       }
-      if (req.method == 'POST' && path == SyncProtocol.changelogPath) {
-        return await _handleChangelog(req, peer);
-      }
-      if (req.method == 'GET' && path.startsWith('/sync/session/')) {
-        return _handleSession(req, path.substring('/sync/session/'.length));
-      }
-      _json(req, 404, {'error': 'not_found'});
+
+      // Resto: assets estáticos de la webapp (sin token: es solo la UI; los
+      // datos siempre van por la API con token).
+      await _serveStatic(req);
     } catch (e) {
       _json(req, 500, {'error': '$e'});
     }
+  }
+
+  void _cors(HttpRequest req) {
+    req.response.headers
+      ..set('Access-Control-Allow-Origin', '*')
+      ..set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+      ..set('Access-Control-Allow-Headers', 'authorization, content-type');
+  }
+
+  Future<void> _serveStatic(HttpRequest req) async {
+    final root = webRoot;
+    if (root == null) return _json(req, 404, {'error': 'no_webapp'});
+    var rel = req.uri.path == '/' ? 'index.html' : req.uri.path.substring(1);
+    if (rel.contains('..')) return _json(req, 403, {'error': 'forbidden'});
+    var file = File('$root/$rel');
+    // Fallback SPA: cualquier ruta desconocida sirve index.html.
+    if (!file.existsSync()) file = File('$root/index.html');
+    if (!file.existsSync()) return _json(req, 404, {'error': 'not_found'});
+    req.response.headers.contentType = _contentTypeFor(file.path);
+    await req.response.addStream(file.openRead());
+    await req.response.close();
+  }
+
+  ContentType _contentTypeFor(String path) {
+    if (path.endsWith('.html')) return ContentType.html;
+    if (path.endsWith('.js')) return ContentType('application', 'javascript');
+    if (path.endsWith('.css')) return ContentType('text', 'css');
+    if (path.endsWith('.json')) return ContentType.json;
+    if (path.endsWith('.png')) return ContentType('image', 'png');
+    if (path.endsWith('.svg')) return ContentType('image', 'svg+xml');
+    if (path.endsWith('.wasm')) return ContentType('application', 'wasm');
+    return ContentType.binary;
   }
 
   Future<SyncPeer?> _authenticate(HttpRequest req) async {
