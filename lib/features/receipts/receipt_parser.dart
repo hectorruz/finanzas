@@ -12,6 +12,10 @@ class OcrLine {
 }
 
 /// Resultado del análisis heurístico de un ticket.
+///
+/// Los flags `*Confident` marcan la fiabilidad de cada campo para que la
+/// pantalla de revisión resalte los de **baja confianza** antes de guardar:
+/// nada se guarda a ciegas.
 class ParsedReceipt {
   final String rawText;
   final String? merchant;
@@ -19,12 +23,21 @@ class ParsedReceipt {
   final DateTime? date;
   final String? suggestedCategory;
 
+  /// El comercio salió de una cabecera plausible (no del fallback).
+  final bool merchantConfident;
+
+  /// El total salió de una fila etiquetada ("TOTAL", "A PAGAR"…), no del
+  /// fallback por puntuación (importe mayor / posición).
+  final bool totalConfident;
+
   const ParsedReceipt({
     required this.rawText,
     this.merchant,
     this.totalCents,
     this.date,
     this.suggestedCategory,
+    this.merchantConfident = false,
+    this.totalConfident = false,
   });
 }
 
@@ -38,10 +51,14 @@ class ReceiptParser {
   ParsedReceipt parse(List<OcrLine> lines) {
     final rows = reconstructRows(lines);
     final text = rows.join('\n');
+    final merchant = detectMerchantInfo(rows);
+    final total = detectTotal(rows);
     return ParsedReceipt(
       rawText: text,
-      merchant: detectMerchant(rows),
-      totalCents: detectTotalCents(rows),
+      merchant: merchant.name,
+      merchantConfident: merchant.confident,
+      totalCents: total.cents,
+      totalConfident: total.confident,
       date: detectDate(text),
       suggestedCategory: suggestCategory(text),
     );
@@ -137,7 +154,11 @@ class ReceiptParser {
   );
 
   /// Elige el total del ticket entre los importes de las filas dadas.
-  static int? detectTotalCents(List<String> rows) {
+  static int? detectTotalCents(List<String> rows) => detectTotal(rows).cents;
+
+  /// Como [detectTotalCents], pero indicando además si el total salió de una
+  /// fila etiquetada (confianza alta) o del fallback por puntuación.
+  static ({int? cents, bool confident}) detectTotal(List<String> rows) {
     final infos = <_RowInfo>[];
     for (var i = 0; i < rows.length; i++) {
       infos.add(_RowInfo.analyze(rows[i], i));
@@ -211,7 +232,7 @@ class ReceiptParser {
       }
     }
 
-    if (candidates.isEmpty) return null;
+    if (candidates.isEmpty) return (cents: null, confident: false);
 
     // Bonus contextuales. Se mantienen por debajo de 80 para que un total
     // etiquetado nunca pierda contra un importe suelto.
@@ -239,7 +260,9 @@ class ReceiptParser {
         best = c;
       }
     }
-    return best.cents;
+    // >= 80: vino de una fila etiquetada o del emparejamiento de columnas; por
+    // debajo es el fallback (importe mayor / posición), que conviene revisar.
+    return (cents: best.cents, confident: best.score >= 80);
   }
 
   /// Importes válidos de una fila, en céntimos y en orden de aparición.
@@ -253,7 +276,11 @@ class ReceiptParser {
   }
 
   /// El comercio suele estar en las primeras líneas (cabecera del ticket).
-  static String? detectMerchant(List<String> rows) {
+  static String? detectMerchant(List<String> rows) => detectMerchantInfo(rows).name;
+
+  /// Como [detectMerchant], indicando si salió de una cabecera plausible
+  /// (confianza alta) o del fallback "primera fila".
+  static ({String? name, bool confident}) detectMerchantInfo(List<String> rows) {
     for (final row in rows.take(4)) {
       final letters = row.replaceAll(RegExp(r'[^A-Za-zÀ-ÿ]'), '');
       // Una cabecera plausible: suficientes letras y no es solo precios/fechas.
@@ -261,10 +288,13 @@ class ReceiptParser {
           !RegExp(r'^\d').hasMatch(row) &&
           !row.toLowerCase().contains('factura') &&
           !row.toLowerCase().contains('ticket')) {
-        return _titleCase(row);
+        return (name: _titleCase(row), confident: true);
       }
     }
-    return rows.isNotEmpty ? _titleCase(rows.first) : null;
+    return (
+      name: rows.isNotEmpty ? _titleCase(rows.first) : null,
+      confident: false,
+    );
   }
 
   static DateTime? detectDate(String text) {

@@ -48,6 +48,20 @@ class RecurringRule implements Syncable {
   int accountId = 0;
   int? categoryId;
 
+  // --- Aviso (notificación local) ---
+
+  /// Si se programa una notificación local para esta regla.
+  bool notifyEnabled = false;
+
+  /// Días de antelación del aviso: 0 = el mismo día, 1 = el día antes, N = a
+  /// medida. El aviso es **pasivo** (solo informa): el cargo se materializa
+  /// siempre automáticamente vía `materializeDue`, sin confirmación.
+  int notifyDaysBefore = 0;
+
+  /// Hora local del aviso (0-23) y minuto (0-59).
+  int notifyHour = 9;
+  int notifyMinute = 0;
+
   RecurringRule();
 
   /// Calcula la siguiente fecha a partir de [from] según frecuencia e intervalo.

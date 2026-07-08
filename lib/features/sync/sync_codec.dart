@@ -95,6 +95,10 @@ class SyncCodec {
           'nextDate': r.nextDate.toIso8601String(),
           'endDate': r.endDate?.toIso8601String(),
           'active': r.active,
+          'notifyEnabled': r.notifyEnabled,
+          'notifyDaysBefore': r.notifyDaysBefore,
+          'notifyHour': r.notifyHour,
+          'notifyMinute': r.notifyMinute,
           'accountUuid': uuidOf(SyncCollection.account, r.accountId),
           'categoryUuid': uuidOf(SyncCollection.category, r.categoryId),
         },
@@ -217,6 +221,10 @@ class SyncCodec {
       ..endDate =
           d['endDate'] == null ? null : DateTime.parse(d['endDate'] as String)
       ..active = d['active'] as bool? ?? true
+      ..notifyEnabled = d['notifyEnabled'] as bool? ?? false
+      ..notifyDaysBefore = d['notifyDaysBefore'] as int? ?? 0
+      ..notifyHour = d['notifyHour'] as int? ?? 9
+      ..notifyMinute = d['notifyMinute'] as int? ?? 0
       ..accountId = idOf(SyncCollection.account, d['accountUuid'] as String?) ?? 0
       ..categoryId = idOf(SyncCollection.category, d['categoryUuid'] as String?);
   }

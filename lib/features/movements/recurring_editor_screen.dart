@@ -9,6 +9,7 @@ import '../../data/models/recurring_rule.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/recurring_repository.dart';
+import '../notifications/notification_service.dart';
 import '../../shared/widgets/amount_field.dart';
 import '../../shared/widgets/entity_picker_field.dart';
 
@@ -35,6 +36,9 @@ class _RecurringEditorScreenState
   int? _accountId;
   int? _categoryId;
   bool _active = true;
+  bool _notifyEnabled = false;
+  int _notifyDaysBefore = 0;
+  TimeOfDay _notifyTime = const TimeOfDay(hour: 9, minute: 0);
   bool _loading = true;
   RecurringRule? _existing;
 
@@ -59,6 +63,10 @@ class _RecurringEditorScreenState
         _accountId = rule.accountId;
         _categoryId = rule.categoryId;
         _active = rule.active;
+        _notifyEnabled = rule.notifyEnabled;
+        _notifyDaysBefore = rule.notifyDaysBefore;
+        _notifyTime =
+            TimeOfDay(hour: rule.notifyHour, minute: rule.notifyMinute);
         _nameController.text = rule.name;
       }
     }
@@ -87,16 +95,23 @@ class _RecurringEditorScreenState
       ..endDate = _endDate
       ..accountId = _accountId!
       ..categoryId = _type == TransactionType.transfer ? null : _categoryId
-      ..active = _active;
+      ..active = _active
+      ..notifyEnabled = _notifyEnabled
+      ..notifyDaysBefore = _notifyDaysBefore
+      ..notifyHour = _notifyTime.hour
+      ..notifyMinute = _notifyTime.minute;
     await ref.read(recurringRepositoryProvider).save(rule);
     // Generar de inmediato cualquier ocurrencia ya vencida.
     await ref.read(recurringRepositoryProvider).materializeDue();
+    // Reprogramar los avisos con la configuración nueva.
+    await ref.read(recurringNotificationServiceProvider).rescheduleAll();
     if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _delete() async {
     if (_existing == null) return;
     await ref.read(recurringRepositoryProvider).delete(_existing!.id);
+    await ref.read(recurringNotificationServiceProvider).rescheduleAll();
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -245,6 +260,59 @@ class _RecurringEditorScreenState
                     title: const Text('Activa'),
                     onChanged: (v) => setState(() => _active = v),
                   ),
+                  SwitchListTile(
+                    value: _notifyEnabled,
+                    title: const Text('Avisarme'),
+                    subtitle: const Text(
+                        'Notificación informativa; el cargo se anota solo'),
+                    onChanged: (v) => setState(() => _notifyEnabled = v),
+                  ),
+                  if (_notifyEnabled) ...[
+                    DropdownButtonFormField<int>(
+                      value: _notifyDaysBefore <= 1 ? _notifyDaysBefore : 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Antelación',
+                        prefixIcon: Icon(Icons.notifications_outlined),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text('El mismo día')),
+                        DropdownMenuItem(value: 1, child: Text('El día antes')),
+                        DropdownMenuItem(value: 2, child: Text('Personalizada')),
+                      ],
+                      onChanged: (v) => setState(() => _notifyDaysBefore =
+                          v == 2 ? (_notifyDaysBefore > 1 ? _notifyDaysBefore : 3) : (v ?? 0)),
+                    ),
+                    if (_notifyDaysBefore > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: TextFormField(
+                          initialValue: '$_notifyDaysBefore',
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Días de antelación'),
+                          onChanged: (v) => _notifyDaysBefore =
+                              (int.tryParse(v) ?? 3).clamp(2, 60),
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      shape: RoundedRectangleBorder(
+                        side: BorderSide(
+                            color: Theme.of(context).colorScheme.outline),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      leading: const Icon(Icons.schedule),
+                      title: const Text('Hora del aviso'),
+                      trailing: Text(_notifyTime.format(context)),
+                      onTap: () async {
+                        final picked = await showTimePicker(
+                            context: context, initialTime: _notifyTime);
+                        if (picked != null) {
+                          setState(() => _notifyTime = picked);
+                        }
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     onPressed: _save,

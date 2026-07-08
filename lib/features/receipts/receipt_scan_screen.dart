@@ -10,10 +10,12 @@ import '../../data/models/receipt.dart';
 import '../../data/models/transaction.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/category_repository.dart';
+import '../../data/repositories/merchant_rule_repository.dart';
 import '../../data/repositories/receipt_repository.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/amount_field.dart';
 import '../../shared/widgets/entity_picker_field.dart';
+import 'duplicate_detector.dart';
 import 'ocr_service.dart';
 import 'receipt_image_store.dart';
 
@@ -54,6 +56,15 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
   String? _suggestedCategory;
   bool _createExpense = true;
   Receipt? _existing;
+
+  // Confianza de los campos extraídos: los de baja confianza se resaltan para
+  // que el usuario los revise antes de guardar.
+  bool _merchantConfident = true;
+  bool _totalConfident = true;
+  bool _dateDetected = true;
+
+  /// La categoría vino de la memoria de correcciones (comercio ya conocido).
+  bool _categoryFromMemory = false;
 
   bool get _isEditing => _existing != null;
 
@@ -115,8 +126,11 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
         if (parsed.totalCents != null) _cents = parsed.totalCents;
         if (parsed.date != null) _date = parsed.date!;
         _suggestedCategory = parsed.suggestedCategory;
+        _merchantConfident = parsed.merchantConfident;
+        _totalConfident = parsed.totalConfident && parsed.totalCents != null;
+        _dateDetected = parsed.date != null;
       });
-      _applySuggestedCategory();
+      await _applyCategoryHints();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -126,6 +140,24 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
     } finally {
       if (mounted) setState(() => _processing = false);
     }
+  }
+
+  /// Resuelve la categoría del ticket: primero la **memoria de correcciones**
+  /// (comercio ya visto antes), luego la sugerencia por palabras clave.
+  Future<void> _applyCategoryHints() async {
+    final merchant = _merchantController.text.trim();
+    if (merchant.isNotEmpty) {
+      final remembered =
+          await ref.read(merchantRuleRepositoryProvider).categoryFor(merchant);
+      if (remembered != null && mounted) {
+        setState(() {
+          _categoryId = remembered;
+          _categoryFromMemory = true;
+        });
+        return;
+      }
+    }
+    _applySuggestedCategory();
   }
 
   void _applySuggestedCategory() {
@@ -140,6 +172,24 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
     }
   }
 
+  /// Busca un movimiento existente que coincida con el ticket (mismo importe,
+  /// fecha a ±1 día, comercio relacionado) para evitar el doble apunte.
+  Future<TransactionModel?> _findDuplicate(int cents, String merchant) async {
+    final candidates = await ref.read(transactionRepositoryProvider).query(
+          TransactionFilter(
+            from: _date.subtract(const Duration(days: 1)),
+            to: _date.add(const Duration(days: 2)),
+          ),
+        );
+    return findPossibleDuplicate(
+      candidates,
+      cents: cents,
+      date: _date,
+      merchant: merchant,
+      excludeId: _existing?.transactionId,
+    );
+  }
+
   Future<void> _save() async {
     final cents = _cents;
     if (cents == null || cents <= 0) {
@@ -150,6 +200,39 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
       _toast('Falta la imagen.');
       return;
     }
+
+    // Aviso de posible duplicado antes de crear el gasto (p. ej. si ya lo
+    // anotó una regla recurrente o se apuntó a mano).
+    final merchantForDup = _merchantController.text.trim();
+    if (_createExpense && _existing?.transactionId == null) {
+      final dup = await _findDuplicate(cents, merchantForDup);
+      if (dup != null && mounted) {
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Posible duplicado'),
+            content: Text(
+              'Ya existe un movimiento "${dup.concept}" con el mismo importe '
+              'en fechas cercanas (${DateFormat('d MMM', 'es').format(dup.date)}). '
+              '¿Crear el gasto de todas formas?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('No crear gasto'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Crear igualmente'),
+              ),
+            ],
+          ),
+        );
+        if (proceed == null) return; // cerrado sin decidir: no guardar nada
+        if (!proceed) _createExpense = false; // guarda el ticket sin gasto
+      }
+    }
+    if (!mounted) return;
 
     // Copia la imagen recién elegida a almacenamiento persistente.
     var imagePath = _imagePath ?? '';
@@ -203,6 +286,14 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
     if (receipt.transactionId != transactionId) {
       receipt.transactionId = transactionId;
       await ref.read(receiptRepositoryProvider).save(receipt);
+    }
+
+    // Memoria de correcciones: recuerda comercio → categoría para que el
+    // próximo ticket del mismo comercio se categorice solo.
+    if (merchant.isNotEmpty && _categoryId != null) {
+      await ref
+          .read(merchantRuleRepositoryProvider)
+          .remember(merchant, _categoryId!);
     }
 
     if (mounted) Navigator.of(context).pop(true);
@@ -273,26 +364,39 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _merchantController,
-                    decoration: const InputDecoration(
+                    onChanged: (_) => _categoryFromMemory = false,
+                    decoration: InputDecoration(
                       labelText: 'Comercio',
-                      prefixIcon: Icon(Icons.store),
+                      prefixIcon: const Icon(Icons.store),
+                      helperText: _merchantConfident
+                          ? null
+                          : 'Detección dudosa: revísalo',
+                      helperStyle: TextStyle(
+                          color: Theme.of(context).colorScheme.error),
+                      suffixIcon: _merchantConfident
+                          ? null
+                          : Icon(Icons.warning_amber,
+                              color: Theme.of(context).colorScheme.error),
                     ),
                   ),
                   const SizedBox(height: 16),
                   AmountField(
                     initialCents: _cents,
-                    label: 'Total',
+                    label: _totalConfident ? 'Total' : 'Total (dudoso: revísalo)',
                     onChangedCents: (c) => _cents = c,
                   ),
                   const SizedBox(height: 16),
                   ListTile(
                     shape: RoundedRectangleBorder(
                       side: BorderSide(
-                          color: Theme.of(context).colorScheme.outline),
+                          color: _dateDetected
+                              ? Theme.of(context).colorScheme.outline
+                              : Theme.of(context).colorScheme.error),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     leading: const Icon(Icons.calendar_today),
-                    title: const Text('Fecha'),
+                    title: Text(
+                        _dateDetected ? 'Fecha' : 'Fecha (no detectada: revísala)'),
                     trailing:
                         Text(DateFormat('d MMM yyyy', 'es').format(_date)),
                     onTap: () async {
@@ -314,9 +418,11 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
                     sheetTitle: 'Selecciona categoría',
                     prefixIcon: Icons.category,
                     allowNone: true,
-                    helperText: _suggestedCategory != null
-                        ? 'Sugerida: $_suggestedCategory'
-                        : null,
+                    helperText: _categoryFromMemory
+                        ? 'Recordada de tickets anteriores de este comercio'
+                        : (_suggestedCategory != null
+                            ? 'Sugerida: $_suggestedCategory'
+                            : null),
                   ),
                   const SizedBox(height: 16),
                   EntityPickerField(

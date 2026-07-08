@@ -240,6 +240,10 @@ class BackupService {
         'nextDate': r.nextDate.toIso8601String(),
         'endDate': r.endDate?.toIso8601String(),
         'active': r.active,
+        'notifyEnabled': r.notifyEnabled,
+        'notifyDaysBefore': r.notifyDaysBefore,
+        'notifyHour': r.notifyHour,
+        'notifyMinute': r.notifyMinute,
         'accountId': r.accountId,
         'categoryId': r.categoryId,
       };
@@ -260,6 +264,10 @@ class BackupService {
             ? null
             : DateTime.parse(m['endDate'] as String)
         ..active = m['active'] as bool? ?? true
+        ..notifyEnabled = m['notifyEnabled'] as bool? ?? false
+        ..notifyDaysBefore = m['notifyDaysBefore'] as int? ?? 0
+        ..notifyHour = m['notifyHour'] as int? ?? 9
+        ..notifyMinute = m['notifyMinute'] as int? ?? 0
         ..accountId = m['accountId'] as int? ?? 0
         ..categoryId = m['categoryId'] as int?,
       m);

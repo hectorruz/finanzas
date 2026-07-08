@@ -30,6 +30,7 @@ And `android/app/src/main/AndroidManifest.xml`:
 - Add `USE_BIOMETRIC` permission (required by `local_auth` for the app lock)
 - Register `QuickAddActivity` with `android:theme="@style/QuickAddTheme"`, `excludeFromRecents`, `taskAffinity=""`, `launchMode="singleInstance"` (the quick-add popup)
 - Add `INTERNET` and `ACCESS_NETWORK_STATE` permissions (required by the LAN sync server/client — the *release* manifest by default only has `INTERNET` in `debug`/`profile`, so add it to `main`). Without `INTERNET` the sync server silently fails in release builds.
+- Add `POST_NOTIFICATIONS` and `RECEIVE_BOOT_COMPLETED` permissions and register the `flutter_local_notifications` boot receiver (`ScheduledNotificationBootReceiver` + `ScheduledNotificationReceiver`) so recurring-charge reminders survive a reboot. The app uses **inexact** scheduling, so `SCHEDULE_EXACT_ALARM` is NOT needed.
 
 For the app lock (`local_auth`), `MainActivity` must extend `FlutterFragmentActivity` (not `FlutterActivity`); otherwise the biometric prompt crashes.
 
@@ -188,6 +189,43 @@ flutter create . --platforms=web           # genera web/ (no versionado)
 flutter run -d chrome -t lib/main_web.dart  # desarrollo (apunta a la IP del móvil)
 flutter build web -t lib/main_web.dart      # build en build/web
 ```
+
+### Notificaciones de recurrentes (fase 5)
+
+Avisos locales de próximos cargos/ingresos recurrentes (`lib/features/notifications/`).
+Cada `RecurringRule` guarda `notifyEnabled`, `notifyDaysBefore` (0 = mismo día,
+1 = día antes, N = personalizada) y `notifyHour`/`notifyMinute`, configurables en
+el editor de recurrentes. El aviso es **pasivo** (solo informa): el cargo se
+materializa siempre automáticamente vía `materializeDue`, sin confirmación.
+
+La lógica de fechas es pura y testeable (`notification_planner.dart`:
+`computeNotifyTime` + `planNotifications`, solo avisos futuros). El plugin
+(`flutter_local_notifications` + `timezone`/`flutter_timezone`) vive en
+`notification_service.dart`: `rescheduleAll()` cancela y reprograma el próximo
+aviso de cada regla (id de notificación = id de regla, sin duplicados) con
+programación **inexacta** (no requiere `SCHEDULE_EXACT_ALARM`). Se reprograma en
+`main()` (sin bloquear el arranque) y al guardar/borrar una regla.
+
+### OCR de tickets (fase 6)
+
+El OCR es **on-device** (ML Kit Text Recognition) y la pantalla de escaneo es la
+**revisión pre-guardado**: nada se guarda a ciegas. Sobre eso:
+
+- **Confianza por campo**: `ParsedReceipt` lleva `merchantConfident` /
+  `totalConfident` (total etiquetado "TOTAL…" = alta; fallback por puntuación =
+  baja) y la fecha nula = no detectada. La pantalla resalta los campos dudosos.
+- **Memoria de correcciones** (`MerchantRule` + `merchant_rule_repository.dart`):
+  al guardar un ticket con categoría se recuerda comercio → categoría; el próximo
+  ticket del mismo comercio se categoriza solo (tiene prioridad sobre la
+  sugerencia por palabras clave de `suggestCategory`). Es el enganche del futuro
+  motor de reglas de auto-categorización. Estado local (no se sincroniza).
+- **Detección de duplicados** (`duplicate_detector.dart`, puro): antes de crear
+  el gasto se busca un movimiento con mismo importe, fecha a ±1 día y comercio
+  relacionado (p. ej. el auto-creado por una recurrente) y se avisa con opción de
+  guardar el ticket sin gasto.
+- **Imágenes**: la foto se adjunta al ticket (copia persistente) pero **no se
+  sincroniza** (`imagePath` no viaja en el codec); cada dispositivo guarda las
+  suyas.
 
 ### Privacy mode (hide amounts)
 

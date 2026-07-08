@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -7,6 +9,7 @@ import 'core/db/isar_provider.dart';
 import 'core/db/isar_service.dart';
 import 'data/repositories/recurring_repository.dart';
 import 'data/seed_service.dart';
+import 'features/notifications/notification_service.dart';
 import 'features/quick_add/quick_add_popup.dart';
 
 /// Entrypoint del popup de alta rápida lanzado por el tile de Ajustes rápidos
@@ -41,6 +44,9 @@ Future<void> main() async {
   // Datos por defecto la primera vez y materialización de recurrentes pendientes.
   await SeedService(isar).seedIfEmpty();
   await RecurringRepository(isar).materializeDue();
+
+  // Reprogramar los avisos de recurrentes sin bloquear el arranque.
+  unawaited(RecurringNotificationService(isar).rescheduleAll());
 
   runApp(
     ProviderScope(
