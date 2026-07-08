@@ -11,6 +11,7 @@ import 'net/lan_sync_client.dart';
 import 'net/lan_sync_server.dart';
 import 'net/sync_identity.dart';
 import 'net/sync_protocol.dart';
+import 'net/webapp_assets.dart';
 import 'sync_engine.dart';
 
 // ===================== Lado ADMIN: servidor =====================
@@ -66,12 +67,17 @@ class SyncServerController extends StateNotifier<SyncServerState> {
     try {
       final identity = await ensureIdentity(_settings);
       final pin = generatePin();
+      // Si el build de la webapp está empaquetado (`assets/webapp.zip`), se
+      // sirve desde aquí mismo; si no, el servidor sigue funcionando igual
+      // (solo API) y `_serveStatic` muestra el placeholder.
+      final webRoot = await WebappAssets.ensureExtracted();
       final server = LanSyncServer(
         isar: _isar,
         engine: _engine,
         identity: identity,
         pin: pin,
         onSession: _onSession,
+        webRoot: webRoot,
       );
       final port = await server.start();
       _server = server;

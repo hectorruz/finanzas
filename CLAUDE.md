@@ -60,14 +60,25 @@ dart run build_runner build --delete-conflicting-outputs  # regenerate *.g.dart 
 
 Always commit first, then build the release APK and copy it to `~/Documentos/finanzas/`
 named `finanzas-<commit>.apk`, where `<commit>` is the short hash of the commit that
-produced it:
+produced it. To ship a working desktop webapp (see "Webapp de escritorio" below), pack it
+into `assets/webapp.zip` **before** building the APK — otherwise the phone serves the
+"not built yet" placeholder page:
 
 ```bash
+flutter build web -t lib/main_web.dart
+dart run tool/pack_webapp.dart
 flutter build apk --release
 mkdir -p ~/Documentos/finanzas
 cp build/app/outputs/flutter-apk/app-release.apk \
    ~/Documentos/finanzas/finanzas-$(git rev-parse --short HEAD).apk
 ```
+
+`assets/webapp.zip` is checked in as a placeholder (a small "webapp not built" page) so
+`flutter pub get`/`analyze`/`test` never break on a missing declared asset; running the
+two commands above overwrites it in place with the real build — expect `git status` to
+show it modified afterward, and don't commit that (same spirit as `build/`, which is
+git-ignored). `.github/workflows/build-apk.yml` does **not** run the pack step, so
+CI-built APKs ship the placeholder — acceptable for now, see the webapp section.
 
 El Excel del informe se genera con `syncfusion_flutter_xlsio` (≥ 28.2.9, requerido por
 `intl 0.20`). Desde la v28 **no hace falta registrar ninguna clave de licencia**
@@ -222,16 +233,39 @@ poder compilar al target web.
 La API de datos vive en el servidor del móvil bajo `/api/*` (`data_api.dart`,
 protegida por token) y reutiliza los repositorios de la app, así que las altas y
 borrados desde la web pasan por el **mismo camino de escritura** (sellado de sync,
-soft-delete) que la UI del móvil. `LanSyncServer` añade CORS y puede servir un
-build web estático si se le pasa `webRoot` (`build/web`); por defecto el móvil
-sirve **solo la API** y la webapp se ejecuta en el PC apuntando a la IP del móvil.
+soft-delete) que la UI del móvil.
 
-Generar el target y ejecutar/compilar la webapp:
+**Se sirve desde el propio móvil, no hace falta un PC aparte para usarla:**
+`LanSyncServer` sirve el build estático (`_serveStatic`/`webRoot`) en cualquier ruta
+que no sea `/pair`, `/api/*` ni `/sync/*` — cualquier navegador en la misma Wi-Fi que
+abra `http://<ip-del-principal>:<puerto>` recibe la webapp entera; `WebConnectScreen`
+autorrellena host/puerto desde `Uri.base` porque justo espera correr así. Ajustes →
+apartado "Webapp de escritorio" muestra la dirección en vivo (con botón de copiar)
+cuando el servidor está activo.
+
+El build de `flutter build web` se empaqueta como **un solo fichero zip**
+(`assets/webapp.zip`, asset declarado en `pubspec.yaml`) en vez de como carpeta: el
+bundling de assets de Flutter **no es recursivo** (`_parseAssetsFromFolder` en
+`flutter_tools` descarta subdirectorios en silencio), y un build web tiene carpetas
+anidadas (`assets/`, `canvaskit/`, `icons/`) — una carpeta declarada tal cual habría
+dejado la webapp a medias (sin fuentes/canvaskit) de forma silenciosa y dependiente
+de la versión del SDK. `WebappAssets.ensureExtracted()`
+(`lib/features/sync/net/webapp_assets.dart`) descomprime ese zip con `package:archive`
+a un directorio real (`path_provider`, cacheado por tamaño de fichero) la primera vez
+que arranca el servidor, y ese directorio es el `webRoot` que se le pasa a
+`LanSyncServer` — nunca lanza: si el asset falta o está roto, el servidor sigue
+sirviendo solo la API con normalidad.
+
+`assets/webapp.zip` va commiteado como **placeholder** (una página "aún no
+compilada"); generar el build real y empaquetarlo:
 ```bash
-flutter create . --platforms=web           # genera web/ (no versionado)
-flutter run -d chrome -t lib/main_web.dart  # desarrollo (apunta a la IP del móvil)
-flutter build web -t lib/main_web.dart      # build en build/web
+flutter create . --platforms=web           # genera web/ (no versionado), una vez
+flutter run -d chrome -t lib/main_web.dart  # iterar en lib/features/web/ desde un PC
+flutter build web -t lib/main_web.dart      # build real en build/web
+dart run tool/pack_webapp.dart              # lo empaqueta en assets/webapp.zip
 ```
+Ver "Building the APK" arriba: los dos últimos comandos van antes de compilar la APK
+de release para que lleve la webapp de verdad.
 
 ### Notificaciones de recurrentes (fase 5)
 

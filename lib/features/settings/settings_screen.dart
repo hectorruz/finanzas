@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
@@ -12,6 +13,8 @@ import '../../data/repositories/recurring_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../shared/widgets/icon_color_picker.dart';
 import '../security/app_lock_service.dart';
+import '../sync/net/sync_protocol.dart';
+import '../sync/sync_service.dart';
 import 'goals_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -148,6 +151,9 @@ class SettingsScreen extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push(Routes.sync),
           ),
+          const Divider(),
+          const _SectionHeader('Webapp de escritorio'),
+          const _WebappSection(),
           const Divider(),
           const _SectionHeader('Datos'),
           ListTile(
@@ -318,6 +324,76 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
     return result ?? false;
+  }
+}
+
+/// Muestra cómo llegar a la webapp de escritorio: si este dispositivo es el
+/// principal y tiene el servidor activo, la dirección concreta a abrir desde
+/// el navegador de un ordenador (misma Wi-Fi); si no, cómo llegar a activarla.
+class _WebappSection extends ConsumerWidget {
+  const _WebappSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(currentSettingsProvider).syncIsAdmin;
+    final server = ref.watch(syncServerControllerProvider);
+
+    if (!isAdmin) {
+      return const ListTile(
+        leading: Icon(Icons.desktop_windows_outlined),
+        title: Text('Solo desde el principal'),
+        subtitle: Text(
+            'La webapp se sirve desde el dispositivo principal de la sincronización.'),
+      );
+    }
+
+    if (!server.running) {
+      return ListTile(
+        leading: const Icon(Icons.desktop_windows_outlined),
+        title: const Text('Activa el servidor para usarla'),
+        subtitle: const Text(
+            'Usa Finanzas desde el navegador de tu ordenador, en la misma Wi-Fi.'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.push(Routes.sync),
+      );
+    }
+
+    final port = server.port ?? SyncProtocol.defaultPort;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child:
+              Text('Ábrelo en el navegador de un ordenador en la misma Wi-Fi:'),
+        ),
+        if (server.ips.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text('No se detectó ninguna IP de red local.'),
+          )
+        else
+          for (final ip in server.ips)
+            ListTile(
+              leading: const Icon(Icons.desktop_windows_outlined),
+              title: Text('http://$ip:$port'),
+              trailing: IconButton(
+                icon: const Icon(Icons.copy),
+                tooltip: 'Copiar enlace',
+                onPressed: () => _copyLink(context, 'http://$ip:$port'),
+              ),
+            ),
+      ],
+    );
+  }
+
+  Future<void> _copyLink(BuildContext context, String link) async {
+    await Clipboard.setData(ClipboardData(text: link));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enlace copiado.')),
+      );
+    }
   }
 }
 
