@@ -21,8 +21,17 @@ flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 ```
 
-After `flutter create`, manually adjust `android/app/build.gradle`:
+After `flutter create`, manually adjust `android/app/build.gradle.kts`:
 - `minSdkVersion 21` (required by ML Kit and dynamic color)
+- Enable core library desugaring (required by `flutter_local_notifications`, or the release build fails at `checkReleaseAarMetadata`):
+  ```kotlin
+  compileOptions {
+      isCoreLibraryDesugaringEnabled = true
+  }
+  dependencies {
+      coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+  }
+  ```
 
 And `android/app/src/main/AndroidManifest.xml`:
 - Add `CAMERA` permission and `android.hardware.camera` feature (optional)
