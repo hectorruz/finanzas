@@ -628,6 +628,7 @@ class ReportService {
       DateTime from, DateTime to, ReportOptions o) async {
     final txns = (await _isar.transactions
             .filter()
+            .deletedAtIsNull()
             .dateBetween(from, to)
             .findAll())
         .where((t) => o.flow.includes(t.type))

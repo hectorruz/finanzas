@@ -4,8 +4,10 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:isar_community/isar.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import '../core/db/isar_provider.dart';
+import '../core/sync/syncable.dart';
 import 'models/account.dart';
 import 'models/app_settings.dart';
 import 'models/category.dart';
@@ -20,7 +22,10 @@ class BackupService {
   BackupService(this._isar);
   final Isar _isar;
 
-  static const int _version = 1;
+  /// v2 añade los campos de sincronización (uuid/updatedAt/deletedAt) a cada
+  /// entidad. Los backups v1 (sin esos campos) se importan sin problema: el
+  /// mapa `_withSync` genera un uuid y usa defaults tolerantes.
+  static const int _version = 2;
 
   /// Serializa toda la base de datos a un JSON legible.
   Future<String> exportJson() async {
@@ -109,8 +114,34 @@ class BackupService {
       (raw as List<dynamic>? ?? const [])
           .cast<Map<String, dynamic>>();
 
+  static const Uuid _uuid = Uuid();
+
+  /// Campos de sincronización comunes a toda entidad [Syncable], para mezclar
+  /// (`...`) en cada `toMap`.
+  Map<String, dynamic> _syncToMap(Syncable e) => {
+        'uuid': e.uuid,
+        'updatedAt': e.updatedAt.toIso8601String(),
+        'deletedAt': e.deletedAt?.toIso8601String(),
+      };
+
+  /// Rellena los campos de sincronización de [e] desde el mapa [m] y devuelve la
+  /// propia entidad (para encadenar en los `fromMap` con cuerpo de flecha).
+  /// Si el backup es v1 (sin `uuid`), genera uno para no perder la identidad.
+  T _withSync<T extends Syncable>(T e, Map<String, dynamic> m) {
+    final uuid = m['uuid'] as String?;
+    e.uuid = (uuid == null || uuid.isEmpty) ? _uuid.v4() : uuid;
+    final updated = m['updatedAt'] as String?;
+    e.updatedAt = updated == null
+        ? DateTime.fromMillisecondsSinceEpoch(0)
+        : DateTime.parse(updated);
+    final deleted = m['deletedAt'] as String?;
+    e.deletedAt = deleted == null ? null : DateTime.parse(deleted);
+    return e;
+  }
+
   Map<String, dynamic> _accountToMap(Account a) => {
         'id': a.id,
+        ..._syncToMap(a),
         'name': a.name,
         'type': a.type.name,
         'initialBalanceCents': a.initialBalanceCents,
@@ -124,22 +155,26 @@ class BackupService {
         'sortOrder': a.sortOrder,
       };
 
-  Account _accountFromMap(Map<String, dynamic> m) => Account()
-    ..id = m['id'] as int
-    ..name = m['name'] as String
-    ..type = enumByName(AccountType.values, m['type'] as String?, AccountType.bank)
-    ..initialBalanceCents = m['initialBalanceCents'] as int? ?? 0
-    ..currency = m['currency'] as String? ?? 'EUR'
-    ..iconName = m['iconName'] as String? ?? 'account_balance'
-    ..colorValue = m['colorValue'] as int? ?? 0xFF1976D2
-    ..archived = m['archived'] as bool? ?? false
-    ..includeInTotal = m['includeInTotal'] as bool? ?? true
-    ..note = m['note'] as String? ?? ''
-    ..parentId = m['parentId'] as int?
-    ..sortOrder = m['sortOrder'] as int? ?? 0;
+  Account _accountFromMap(Map<String, dynamic> m) => _withSync(
+      Account()
+        ..id = m['id'] as int
+        ..name = m['name'] as String
+        ..type =
+            enumByName(AccountType.values, m['type'] as String?, AccountType.bank)
+        ..initialBalanceCents = m['initialBalanceCents'] as int? ?? 0
+        ..currency = m['currency'] as String? ?? 'EUR'
+        ..iconName = m['iconName'] as String? ?? 'account_balance'
+        ..colorValue = m['colorValue'] as int? ?? 0xFF1976D2
+        ..archived = m['archived'] as bool? ?? false
+        ..includeInTotal = m['includeInTotal'] as bool? ?? true
+        ..note = m['note'] as String? ?? ''
+        ..parentId = m['parentId'] as int?
+        ..sortOrder = m['sortOrder'] as int? ?? 0,
+      m);
 
   Map<String, dynamic> _categoryToMap(Category c) => {
         'id': c.id,
+        ..._syncToMap(c),
         'name': c.name,
         'kind': c.kind.name,
         'iconName': c.iconName,
@@ -149,19 +184,22 @@ class BackupService {
         'sortOrder': c.sortOrder,
       };
 
-  Category _categoryFromMap(Map<String, dynamic> m) => Category()
-    ..id = m['id'] as int
-    ..name = m['name'] as String
-    ..kind =
-        enumByName(CategoryKind.values, m['kind'] as String?, CategoryKind.expense)
-    ..iconName = m['iconName'] as String? ?? 'category'
-    ..colorValue = m['colorValue'] as int? ?? 0xFF9E9E9E
-    ..isDefault = m['isDefault'] as bool? ?? false
-    ..parentId = m['parentId'] as int?
-    ..sortOrder = m['sortOrder'] as int? ?? 0;
+  Category _categoryFromMap(Map<String, dynamic> m) => _withSync(
+      Category()
+        ..id = m['id'] as int
+        ..name = m['name'] as String
+        ..kind = enumByName(
+            CategoryKind.values, m['kind'] as String?, CategoryKind.expense)
+        ..iconName = m['iconName'] as String? ?? 'category'
+        ..colorValue = m['colorValue'] as int? ?? 0xFF9E9E9E
+        ..isDefault = m['isDefault'] as bool? ?? false
+        ..parentId = m['parentId'] as int?
+        ..sortOrder = m['sortOrder'] as int? ?? 0,
+      m);
 
   Map<String, dynamic> _transactionToMap(TransactionModel t) => {
         'id': t.id,
+        ..._syncToMap(t),
         'type': t.type.name,
         'amountCents': t.amountCents,
         'concept': t.concept,
@@ -174,7 +212,7 @@ class BackupService {
         'receiptId': t.receiptId,
       };
 
-  TransactionModel _transactionFromMap(Map<String, dynamic> m) =>
+  TransactionModel _transactionFromMap(Map<String, dynamic> m) => _withSync(
       TransactionModel()
         ..id = m['id'] as int
         ..type = enumByName(
@@ -187,10 +225,12 @@ class BackupService {
         ..toAccountId = m['toAccountId'] as int?
         ..categoryId = m['categoryId'] as int?
         ..recurringRuleId = m['recurringRuleId'] as int?
-        ..receiptId = m['receiptId'] as int?;
+        ..receiptId = m['receiptId'] as int?,
+      m);
 
   Map<String, dynamic> _recurringToMap(RecurringRule r) => {
         'id': r.id,
+        ..._syncToMap(r),
         'name': r.name,
         'type': r.type.name,
         'amountCents': r.amountCents,
@@ -204,26 +244,29 @@ class BackupService {
         'categoryId': r.categoryId,
       };
 
-  RecurringRule _recurringFromMap(Map<String, dynamic> m) => RecurringRule()
-    ..id = m['id'] as int
-    ..name = m['name'] as String? ?? ''
-    ..type = enumByName(
-        TransactionType.values, m['type'] as String?, TransactionType.expense)
-    ..amountCents = m['amountCents'] as int? ?? 0
-    ..concept = m['concept'] as String? ?? ''
-    ..frequency = enumByName(RecurringFrequency.values,
-        m['frequency'] as String?, RecurringFrequency.monthly)
-    ..interval = m['interval'] as int? ?? 1
-    ..nextDate = DateTime.parse(m['nextDate'] as String)
-    ..endDate = m['endDate'] == null
-        ? null
-        : DateTime.parse(m['endDate'] as String)
-    ..active = m['active'] as bool? ?? true
-    ..accountId = m['accountId'] as int? ?? 0
-    ..categoryId = m['categoryId'] as int?;
+  RecurringRule _recurringFromMap(Map<String, dynamic> m) => _withSync(
+      RecurringRule()
+        ..id = m['id'] as int
+        ..name = m['name'] as String? ?? ''
+        ..type = enumByName(TransactionType.values, m['type'] as String?,
+            TransactionType.expense)
+        ..amountCents = m['amountCents'] as int? ?? 0
+        ..concept = m['concept'] as String? ?? ''
+        ..frequency = enumByName(RecurringFrequency.values,
+            m['frequency'] as String?, RecurringFrequency.monthly)
+        ..interval = m['interval'] as int? ?? 1
+        ..nextDate = DateTime.parse(m['nextDate'] as String)
+        ..endDate = m['endDate'] == null
+            ? null
+            : DateTime.parse(m['endDate'] as String)
+        ..active = m['active'] as bool? ?? true
+        ..accountId = m['accountId'] as int? ?? 0
+        ..categoryId = m['categoryId'] as int?,
+      m);
 
   Map<String, dynamic> _receiptToMap(Receipt r) => {
         'id': r.id,
+        ..._syncToMap(r),
         'imagePath': r.imagePath,
         'merchant': r.merchant,
         'totalCents': r.totalCents,
@@ -233,18 +276,21 @@ class BackupService {
         'transactionId': r.transactionId,
       };
 
-  Receipt _receiptFromMap(Map<String, dynamic> m) => Receipt()
-    ..id = m['id'] as int
-    ..imagePath = m['imagePath'] as String? ?? ''
-    ..merchant = m['merchant'] as String? ?? ''
-    ..totalCents = m['totalCents'] as int? ?? 0
-    ..date = DateTime.parse(m['date'] as String)
-    ..rawText = m['rawText'] as String? ?? ''
-    ..categoryId = m['categoryId'] as int?
-    ..transactionId = m['transactionId'] as int?;
+  Receipt _receiptFromMap(Map<String, dynamic> m) => _withSync(
+      Receipt()
+        ..id = m['id'] as int
+        ..imagePath = m['imagePath'] as String? ?? ''
+        ..merchant = m['merchant'] as String? ?? ''
+        ..totalCents = m['totalCents'] as int? ?? 0
+        ..date = DateTime.parse(m['date'] as String)
+        ..rawText = m['rawText'] as String? ?? ''
+        ..categoryId = m['categoryId'] as int?
+        ..transactionId = m['transactionId'] as int?,
+      m);
 
   Map<String, dynamic> _goalToMap(Goal g) => {
         'id': g.id,
+        ..._syncToMap(g),
         'name': g.name,
         'targetCents': g.targetCents,
         'currentCents': g.currentCents,
@@ -256,19 +302,21 @@ class BackupService {
         'sortOrder': g.sortOrder,
       };
 
-  Goal _goalFromMap(Map<String, dynamic> m) => Goal()
-    ..id = m['id'] as int
-    ..name = m['name'] as String? ?? ''
-    ..targetCents = m['targetCents'] as int? ?? 0
-    ..currentCents = m['currentCents'] as int? ?? 0
-    ..iconName = m['iconName'] as String? ?? 'flag'
-    ..colorValue = m['colorValue'] as int? ?? 0xFF4CAF50
-    ..deadline = m['deadline'] == null
-        ? null
-        : DateTime.parse(m['deadline'] as String)
-    ..monthlyContributionCents = m['monthlyContributionCents'] as int? ?? 0
-    ..planMode = m['planMode'] as String? ?? 'contribution'
-    ..sortOrder = m['sortOrder'] as int? ?? 0;
+  Goal _goalFromMap(Map<String, dynamic> m) => _withSync(
+      Goal()
+        ..id = m['id'] as int
+        ..name = m['name'] as String? ?? ''
+        ..targetCents = m['targetCents'] as int? ?? 0
+        ..currentCents = m['currentCents'] as int? ?? 0
+        ..iconName = m['iconName'] as String? ?? 'flag'
+        ..colorValue = m['colorValue'] as int? ?? 0xFF4CAF50
+        ..deadline = m['deadline'] == null
+            ? null
+            : DateTime.parse(m['deadline'] as String)
+        ..monthlyContributionCents = m['monthlyContributionCents'] as int? ?? 0
+        ..planMode = m['planMode'] as String? ?? 'contribution'
+        ..sortOrder = m['sortOrder'] as int? ?? 0,
+      m);
 
   Map<String, dynamic>? _settingsToMap(AppSettings? s) {
     if (s == null) return null;
@@ -285,6 +333,7 @@ class BackupService {
       'navSections': s.navSections,
       'alwaysShowNavLabels': s.alwaysShowNavLabels,
       'hideAmounts': s.hideAmounts,
+      'dataVersion': s.dataVersion,
     };
   }
 
@@ -306,7 +355,8 @@ class BackupService {
       ..balanceSubtotals =
           (m['balanceSubtotals'] as List<dynamic>? ?? []).cast<String>()
       ..alwaysShowNavLabels = m['alwaysShowNavLabels'] as bool? ?? false
-      ..hideAmounts = m['hideAmounts'] as bool? ?? false;
+      ..hideAmounts = m['hideAmounts'] as bool? ?? false
+      ..dataVersion = m['dataVersion'] as int? ?? 0;
     final nav = (m['navSections'] as List<dynamic>?)?.cast<String>();
     if (nav != null && nav.isNotEmpty) s.navSections = nav;
     return s;

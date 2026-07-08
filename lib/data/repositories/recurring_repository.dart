@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:isar_community/isar.dart';
 
 import '../../core/db/isar_provider.dart';
+import '../../core/sync/sync_stamp.dart';
 import '../models/recurring_rule.dart';
 import '../models/transaction.dart';
 
@@ -11,17 +12,25 @@ class RecurringRepository {
 
   Stream<List<RecurringRule>> watchAll() {
     return _isar.recurringRules
-        .where()
+        .filter()
+        .deletedAtIsNull()
         .sortByNextDate()
         .watch(fireImmediately: true);
   }
 
   Future<int> save(RecurringRule rule) {
+    stampForSave(rule);
     return _isar.writeTxn(() => _isar.recurringRules.put(rule));
   }
 
+  /// Borrado lógico (tombstone) para que se propague en la sincronización.
   Future<void> delete(int id) {
-    return _isar.writeTxn(() => _isar.recurringRules.delete(id));
+    return _isar.writeTxn(() async {
+      final rule = await _isar.recurringRules.get(id);
+      if (rule == null) return;
+      stampForDelete(rule);
+      await _isar.recurringRules.put(rule);
+    });
   }
 
   /// Genera los movimientos pendientes de todas las reglas activas hasta [now].
@@ -34,6 +43,7 @@ class RecurringRepository {
 
     final rules = await _isar.recurringRules
         .filter()
+        .deletedAtIsNull()
         .activeEqualTo(true)
         .findAll();
 
@@ -53,6 +63,8 @@ class RecurringRepository {
             ..accountId = rule.accountId
             ..categoryId = rule.categoryId
             ..recurringRuleId = rule.id;
+          // Movimiento auto-creado: sellar como el resto para que entre en sync.
+          stampForSave(txn, now: today);
           await _isar.transactions.put(txn);
           created++;
 
@@ -61,6 +73,7 @@ class RecurringRepository {
         }
         if (next != rule.nextDate) {
           rule.nextDate = next;
+          stampForSave(rule, now: today);
           await _isar.recurringRules.put(rule);
         }
       }

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:isar_community/isar.dart';
 
 import '../../core/db/isar_provider.dart';
+import '../../core/sync/sync_stamp.dart';
 import '../models/receipt.dart';
 
 class ReceiptRepository {
@@ -10,26 +11,42 @@ class ReceiptRepository {
 
   Stream<List<Receipt>> watchAll() {
     return _isar.receipts
-        .where()
+        .filter()
+        .deletedAtIsNull()
         .sortByDateDesc()
         .watch(fireImmediately: true);
   }
 
   Future<List<Receipt>> all() =>
-      _isar.receipts.where().sortByDateDesc().findAll();
+      _isar.receipts.filter().deletedAtIsNull().sortByDateDesc().findAll();
 
   Future<Receipt?> getById(int id) => _isar.receipts.get(id);
 
   Future<int> save(Receipt receipt) {
+    stampForSave(receipt);
     return _isar.writeTxn(() => _isar.receipts.put(receipt));
   }
 
+  /// Borrado lógico (tombstone) para que se propague en la sincronización.
   Future<void> delete(int id) {
-    return _isar.writeTxn(() => _isar.receipts.delete(id));
+    return _isar.writeTxn(() async {
+      final r = await _isar.receipts.get(id);
+      if (r == null) return;
+      stampForDelete(r);
+      await _isar.receipts.put(r);
+    });
   }
 
   Future<void> deleteMany(List<int> ids) {
-    return _isar.writeTxn(() => _isar.receipts.deleteAll(ids));
+    return _isar.writeTxn(() async {
+      final now = DateTime.now();
+      for (final id in ids) {
+        final r = await _isar.receipts.get(id);
+        if (r == null) continue;
+        stampForDelete(r, now: now);
+        await _isar.receipts.put(r);
+      }
+    });
   }
 }
 

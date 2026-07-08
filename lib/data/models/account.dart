@@ -1,5 +1,6 @@
 import 'package:isar_community/isar.dart';
 
+import '../../core/sync/syncable.dart';
 import 'enums.dart';
 
 part 'account.g.dart';
@@ -9,8 +10,17 @@ part 'account.g.dart';
 /// El saldo se calcula a partir de [initialBalanceCents] más los movimientos
 /// asociados; aquí solo se guarda el saldo inicial.
 @Collection(accessor: 'accounts')
-class Account {
+class Account implements Syncable {
   Id id = Isar.autoIncrement;
+
+  /// Metadatos de sincronización (ver [Syncable]).
+  @override
+  @Index()
+  String uuid = '';
+  @override
+  DateTime updatedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  @override
+  DateTime? deletedAt;
 
   late String name;
 

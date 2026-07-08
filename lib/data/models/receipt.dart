@@ -1,11 +1,22 @@
 import 'package:isar_community/isar.dart';
 
+import '../../core/sync/syncable.dart';
+
 part 'receipt.g.dart';
 
 /// Ticket/factura escaneado mediante OCR.
 @Collection(accessor: 'receipts')
-class Receipt {
+class Receipt implements Syncable {
   Id id = Isar.autoIncrement;
+
+  /// Metadatos de sincronización (ver [Syncable]).
+  @override
+  @Index()
+  String uuid = '';
+  @override
+  DateTime updatedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  @override
+  DateTime? deletedAt;
 
   /// Ruta local de la imagen capturada.
   String imagePath = '';

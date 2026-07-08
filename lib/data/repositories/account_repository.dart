@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:isar_community/isar.dart';
 
 import '../../core/db/isar_provider.dart';
+import '../../core/sync/sync_stamp.dart';
 import '../models/account.dart';
 import '../models/enums.dart';
 import '../models/transaction.dart';
@@ -13,10 +14,15 @@ class AccountRepository {
 
   Future<List<Account>> all({bool includeArchived = false}) {
     if (includeArchived) {
-      return _isar.accounts.where().sortBySortOrder().findAll();
+      return _isar.accounts
+          .filter()
+          .deletedAtIsNull()
+          .sortBySortOrder()
+          .findAll();
     }
     return _isar.accounts
         .filter()
+        .deletedAtIsNull()
         .archivedEqualTo(false)
         .sortBySortOrder()
         .findAll();
@@ -25,6 +31,7 @@ class AccountRepository {
   Stream<List<Account>> watchActive() {
     return _isar.accounts
         .filter()
+        .deletedAtIsNull()
         .archivedEqualTo(false)
         .sortBySortOrder()
         .watch(fireImmediately: true);
@@ -33,6 +40,7 @@ class AccountRepository {
   Future<Account?> getById(int id) => _isar.accounts.get(id);
 
   Future<int> save(Account account) {
+    stampForSave(account);
     return _isar.writeTxn(() => _isar.accounts.put(account));
   }
 
@@ -41,20 +49,27 @@ class AccountRepository {
       final acc = await _isar.accounts.get(id);
       if (acc == null) return;
       acc.archived = archived;
+      stampForSave(acc);
       await _isar.accounts.put(acc);
     });
   }
 
-  /// Borra una cuenta y todos sus movimientos asociados (origen o destino).
-  /// Sus subcuentas directas se recolocan bajo el padre de la borrada (su
-  /// "abuelo"), conservando el resto del árbol en lugar de quedar huérfanas.
+  /// Borra (lógicamente) una cuenta y todos sus movimientos asociados (origen o
+  /// destino). Sus subcuentas directas se recolocan bajo el padre de la borrada
+  /// (su "abuelo"), conservando el resto del árbol en lugar de quedar huérfanas.
+  /// Todo se marca como tombstone (`deletedAt`) en vez de borrarse físicamente,
+  /// para que el borrado se propague en la sincronización.
   Future<void> delete(int id) async {
     await _isar.writeTxn(() async {
+      final now = DateTime.now();
       final deleted = await _isar.accounts.get(id);
+      if (deleted == null) return;
+
       final children =
           await _isar.accounts.filter().parentIdEqualTo(id).findAll();
       for (final c in children) {
-        c.parentId = deleted?.parentId;
+        c.parentId = deleted.parentId;
+        stampForSave(c, now: now); // el re-parenting es una modificación
       }
       if (children.isNotEmpty) await _isar.accounts.putAll(children);
 
@@ -64,9 +79,13 @@ class AccountRepository {
           .or()
           .toAccountIdEqualTo(id)
           .findAll();
-      await _isar.transactions
-          .deleteAll(related.map((t) => t.id).toList());
-      await _isar.accounts.delete(id);
+      for (final t in related) {
+        stampForDelete(t, now: now);
+      }
+      if (related.isNotEmpty) await _isar.transactions.putAll(related);
+
+      stampForDelete(deleted, now: now);
+      await _isar.accounts.put(deleted);
     });
   }
 
@@ -78,6 +97,7 @@ class AccountRepository {
 
     final outgoing = await _isar.transactions
         .filter()
+        .deletedAtIsNull()
         .accountIdEqualTo(accountId)
         .findAll();
     for (final t in outgoing) {
@@ -87,6 +107,7 @@ class AccountRepository {
     // Transferencias entrantes (la cuenta es destino) suman el importe.
     final incoming = await _isar.transactions
         .filter()
+        .deletedAtIsNull()
         .typeEqualTo(TransactionType.transfer)
         .toAccountIdEqualTo(accountId)
         .findAll();

@@ -1,5 +1,6 @@
 import 'package:isar_community/isar.dart';
 
+import '../core/sync/sync_stamp.dart';
 import 'models/account.dart';
 import 'models/category.dart';
 import 'models/enums.dart';
@@ -16,10 +17,12 @@ class SeedService {
 
     await _isar.writeTxn(() async {
       if (!hasAccounts) {
-        await _isar.accounts.putAll(_defaultAccounts());
+        final accounts = _defaultAccounts()..forEach(stampForSave);
+        await _isar.accounts.putAll(accounts);
       }
       if (!hasCategories) {
-        await _isar.categories.putAll(_defaultCategories());
+        final categories = _defaultCategories()..forEach(stampForSave);
+        await _isar.categories.putAll(categories);
       }
     });
   }

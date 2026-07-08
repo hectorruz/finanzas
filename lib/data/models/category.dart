@@ -1,13 +1,23 @@
 import 'package:isar_community/isar.dart';
 
+import '../../core/sync/syncable.dart';
 import 'enums.dart';
 
 part 'category.g.dart';
 
 /// Categoría personalizable para clasificar ingresos o gastos.
 @Collection(accessor: 'categories')
-class Category {
+class Category implements Syncable {
   Id id = Isar.autoIncrement;
+
+  /// Metadatos de sincronización (ver [Syncable]).
+  @override
+  @Index()
+  String uuid = '';
+  @override
+  DateTime updatedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  @override
+  DateTime? deletedAt;
 
   late String name;
 

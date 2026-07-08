@@ -1,5 +1,6 @@
 import 'package:isar_community/isar.dart';
 
+import '../../core/sync/syncable.dart';
 import 'enums.dart';
 
 part 'recurring_rule.g.dart';
@@ -9,8 +10,17 @@ part 'recurring_rule.g.dart';
 /// Un servicio "materializa" las ocurrencias pendientes generando
 /// [TransactionModel] reales hasta la fecha actual cada vez que se abre la app.
 @Collection(accessor: 'recurringRules')
-class RecurringRule {
+class RecurringRule implements Syncable {
   Id id = Isar.autoIncrement;
+
+  /// Metadatos de sincronización (ver [Syncable]).
+  @override
+  @Index()
+  String uuid = '';
+  @override
+  DateTime updatedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  @override
+  DateTime? deletedAt;
 
   late String name;
 

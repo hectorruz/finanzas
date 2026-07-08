@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:isar_community/isar.dart';
 
 import '../../core/db/isar_provider.dart';
+import '../../core/sync/sync_stamp.dart';
 import '../models/enums.dart';
 import '../models/transaction.dart';
 import 'account_repository.dart';
@@ -79,24 +80,42 @@ class TransactionRepository {
   Future<TransactionModel?> getById(int id) => _isar.transactions.get(id);
 
   Future<int> save(TransactionModel txn) {
+    stampForSave(txn);
     return _isar.writeTxn(() => _isar.transactions.put(txn));
   }
 
+  /// Borrado lógico (tombstone): marca [deletedAt] en vez de borrar físicamente,
+  /// para que el borrado se propague en la sincronización y no "resucite".
   Future<void> delete(int id) {
-    return _isar.writeTxn(() => _isar.transactions.delete(id));
+    return _isar.writeTxn(() async {
+      final t = await _isar.transactions.get(id);
+      if (t == null) return;
+      stampForDelete(t);
+      await _isar.transactions.put(t);
+    });
   }
 
   Future<void> deleteMany(List<int> ids) {
-    return _isar.writeTxn(() => _isar.transactions.deleteAll(ids));
+    return _isar.writeTxn(() async {
+      final now = DateTime.now();
+      for (final id in ids) {
+        final t = await _isar.transactions.get(id);
+        if (t == null) continue;
+        stampForDelete(t, now: now);
+        await _isar.transactions.put(t);
+      }
+    });
   }
 
   /// Actualiza en lote la categoría de varios movimientos (edición tipo Excel).
   Future<void> bulkSetCategory(List<int> ids, int? categoryId) async {
     await _isar.writeTxn(() async {
+      final now = DateTime.now();
       for (final id in ids) {
         final t = await _isar.transactions.get(id);
         if (t == null) continue;
         t.categoryId = categoryId;
+        stampForSave(t, now: now);
         await _isar.transactions.put(t);
       }
     });
@@ -105,10 +124,12 @@ class TransactionRepository {
   /// Mueve en lote varios movimientos a otra cuenta.
   Future<void> bulkSetAccount(List<int> ids, int accountId) async {
     await _isar.writeTxn(() async {
+      final now = DateTime.now();
       for (final id in ids) {
         final t = await _isar.transactions.get(id);
         if (t == null) continue;
         t.accountId = accountId;
+        stampForSave(t, now: now);
         await _isar.transactions.put(t);
       }
     });
@@ -116,7 +137,8 @@ class TransactionRepository {
 
   Future<List<TransactionModel>> recent({int limit = 10}) {
     return _isar.transactions
-        .where()
+        .filter()
+        .deletedAtIsNull()
         .sortByDateDesc()
         .limit(limit)
         .findAll();
@@ -126,7 +148,7 @@ class TransactionRepository {
   /// resuelven en Isar; búsqueda de texto, cuenta y categoría se afinan en
   /// memoria (el conjunto de datos personal es pequeño).
   Future<List<TransactionModel>> query(TransactionFilter f) async {
-    final all = await _isar.transactions.where().findAll();
+    final all = await _isar.transactions.filter().deletedAtIsNull().findAll();
     final query = f.query.trim().toLowerCase();
 
     final filtered = all.where((t) {
@@ -172,6 +194,7 @@ class TransactionRepository {
   ) async {
     final txns = await _isar.transactions
         .filter()
+        .deletedAtIsNull()
         .dateBetween(from, to)
         .findAll();
     var income = 0;

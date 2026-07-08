@@ -1,11 +1,22 @@
 import 'package:isar_community/isar.dart';
 
+import '../../core/sync/syncable.dart';
+
 part 'goal.g.dart';
 
 /// Objetivo de ahorro configurable (módulo opcional del dashboard).
 @Collection(accessor: 'goals')
-class Goal {
+class Goal implements Syncable {
   Id id = Isar.autoIncrement;
+
+  /// Metadatos de sincronización (ver [Syncable]).
+  @override
+  @Index()
+  String uuid = '';
+  @override
+  DateTime updatedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  @override
+  DateTime? deletedAt;
 
   late String name;
 

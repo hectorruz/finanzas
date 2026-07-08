@@ -40,3 +40,8 @@ ios/Flutter/Flutter.podspec
 # Misc
 *.log
 coverage/
+
+# Binario nativo de Isar descargado por los tests (Isar.initializeIsarCore)
+libisar.so
+isar-*.dylib
+windows/isar.dll

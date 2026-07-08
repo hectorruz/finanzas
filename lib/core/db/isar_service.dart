@@ -9,6 +9,7 @@ import '../../data/models/goal.dart';
 import '../../data/models/receipt.dart';
 import '../../data/models/recurring_rule.dart';
 import '../../data/models/transaction.dart';
+import 'migration_service.dart';
 
 /// Esquemas registrados en la base de datos.
 const List<CollectionSchema<dynamic>> kIsarSchemas = [
@@ -31,10 +32,17 @@ class IsarService {
     if (existing != null) return existing;
 
     final dir = await getApplicationDocumentsDirectory();
-    return Isar.open(
+    final isar = await Isar.open(
       kIsarSchemas,
       directory: dir.path,
       inspector: false,
     );
+
+    // Backfill idempotente de los campos de sincronización sobre datos previos.
+    // Corre una sola vez (guard por AppSettings.dataVersion) y antes de que
+    // ningún repositorio lea/escriba.
+    await runMigrations(isar);
+
+    return isar;
   }
 }

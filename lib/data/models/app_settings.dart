@@ -104,6 +104,13 @@ class AppSettings {
   /// El rango de fechas no se guarda aquí (es puntual en cada informe).
   String reportConfig = '';
 
+  // --- Migraciones ---
+
+  /// Versión del esquema de datos ya aplicada en esta BD. La usa el migrador
+  /// (`MigrationService`) para hacer un backfill idempotente de los campos de
+  /// sincronización (uuid/updatedAt) una sola vez. No se sincroniza (es local).
+  int dataVersion = 0;
+
   AppSettings();
 
   // --- Acceso tipado seguro (directiva de calidad #2) ---

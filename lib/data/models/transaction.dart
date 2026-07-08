@@ -1,5 +1,6 @@
 import 'package:isar_community/isar.dart';
 
+import '../../core/sync/syncable.dart';
 import 'enums.dart';
 
 part 'transaction.g.dart';
@@ -13,8 +14,17 @@ part 'transaction.g.dart';
 /// Se usan ids planos indexados (en lugar de `IsarLink`) para que el filtrado
 /// tipo Excel sea simple y eficiente.
 @Collection(accessor: 'transactions')
-class TransactionModel {
+class TransactionModel implements Syncable {
   Id id = Isar.autoIncrement;
+
+  /// Metadatos de sincronización (ver [Syncable]).
+  @override
+  @Index()
+  String uuid = '';
+  @override
+  DateTime updatedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  @override
+  DateTime? deletedAt;
 
   @Enumerated(EnumType.name)
   TransactionType type = TransactionType.expense;
