@@ -1,11 +1,10 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:isar_community/isar.dart';
-import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../core/db/isar_provider.dart';
+import '../../core/notifications/local_notifications.dart';
 import '../../data/models/recurring_rule.dart';
 import 'notification_planner.dart';
 
@@ -19,9 +18,6 @@ class RecurringNotificationService {
   RecurringNotificationService(this._isar);
 
   final Isar _isar;
-  final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
-  bool _ready = false;
 
   static const _channel = AndroidNotificationDetails(
     'recurring',
@@ -30,48 +26,27 @@ class RecurringNotificationService {
     importance: Importance.defaultImportance,
   );
 
-  /// Inicializa el plugin y la zona horaria. Tolerante a fallos: si la
-  /// plataforma no soporta notificaciones (p. ej. tests), queda desactivado.
-  Future<bool> init() async {
-    if (_ready) return true;
-    try {
-      tzdata.initializeTimeZones();
-      try {
-        final name = await FlutterTimezone.getLocalTimezone();
-        tz.setLocalLocation(tz.getLocation(name.identifier));
-      } catch (_) {
-        // Nos quedamos con la zona por defecto de `tz.local`.
-      }
-      const initSettings = InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        linux: LinuxInitializationSettings(defaultActionName: 'Abrir'),
-      );
-      final ok = await _plugin.initialize(settings: initSettings);
-      if (ok == false) return false;
-      await _plugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestNotificationsPermission();
-      _ready = true;
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
   /// Cancela y vuelve a programar el próximo aviso de cada regla habilitada.
+  ///
+  /// Cancela **solo** los ids de regla (nunca `cancelAll()`): el recordatorio
+  /// de sincronización (`SyncReminderService`) usa el mismo plugin/canal
+  /// nativo con sus propios ids y no debe perder su programación cada vez que
+  /// esto se reprograma.
   Future<void> rescheduleAll() async {
-    if (!await init()) return;
+    if (!await ensureNotificationsInitialized()) return;
+    final allRules = await _isar.recurringRules.where().findAll();
+    for (final r in allRules) {
+      await localNotificationsPlugin.cancel(id: r.id);
+    }
+
     final rules = await _isar.recurringRules
         .filter()
         .deletedAtIsNull()
         .activeEqualTo(true)
         .notifyEnabledEqualTo(true)
         .findAll();
-
-    await _plugin.cancelAll();
     for (final plan in planNotifications(rules)) {
-      await _plugin.zonedSchedule(
+      await localNotificationsPlugin.zonedSchedule(
         id: plan.id,
         title: plan.title,
         body: plan.body,

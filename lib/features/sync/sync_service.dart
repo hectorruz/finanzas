@@ -108,9 +108,15 @@ class SyncServerController extends StateNotifier<SyncServerState> {
     _drop(s);
   }
 
+  /// Revoca el acceso de un dispositivo vinculado (borra su token: su próxima
+  /// petición recibirá 401 y tendrá que volver a emparejarse con el PIN).
+  Future<void> forgetLinkedPeer(int peerId) async {
+    await _isar.writeTxn(() => _isar.syncPeers.delete(peerId));
+  }
+
   void _drop(ReviewSession s) {
-    state =
-        state.copyWith(pending: state.pending.where((e) => e.id != s.id).toList());
+    state = state.copyWith(
+        pending: state.pending.where((e) => e.id != s.id).toList());
   }
 
   @override
@@ -127,6 +133,17 @@ final syncServerControllerProvider =
     ref.watch(syncEngineProvider),
     ref.watch(settingsRepositoryProvider),
   );
+});
+
+/// Dispositivos vinculados que ya se emparejaron con este admin (para
+/// mostrarlos y poder revocar su acceso), independientemente de si tienen una
+/// sesión de revisión pendiente ahora mismo.
+final linkedPeersProvider = StreamProvider<List<SyncPeer>>((ref) {
+  final isar = ref.watch(isarProvider);
+  return isar.syncPeers
+      .filter()
+      .remoteIsAdminEqualTo(false)
+      .watch(fireImmediately: true);
 });
 
 // ===================== Lado VINCULADO: cliente =====================
@@ -157,7 +174,9 @@ class LinkedSyncService {
     final client = LanSyncClient(host: host, port: port);
     try {
       final res = await client.pair(
-          pin: pin, deviceId: identity.deviceId, displayName: identity.displayName);
+          pin: pin,
+          deviceId: identity.deviceId,
+          displayName: identity.displayName);
       await _upsertAdminPeer(res, host, port);
       return res.displayName;
     } finally {
@@ -184,8 +203,7 @@ class LinkedSyncService {
       throw StateError('No emparejado: empareja primero con el admin.');
     }
 
-    final client =
-        LanSyncClient(host: host, port: port, token: peer.pairToken);
+    final client = LanSyncClient(host: host, port: port, token: peer.pairToken);
     try {
       final changes = await _engine.buildChangelog(peer.watermark);
       final pushed = await client.pushChangelog(
@@ -214,6 +232,41 @@ class LinkedSyncService {
     }
   }
 
+  /// Admins ya emparejados con este dispositivo (guardados localmente): permite
+  /// reconectar sin volver a teclear IP/puerto/PIN cada vez.
+  Future<List<SyncPeer>> savedAdminPeers() =>
+      _isar.syncPeers.filter().remoteIsAdminEqualTo(true).findAll();
+
+  /// Olvida un admin guardado (borra el token local; para volver a sincronizar
+  /// con él hará falta emparejarse de nuevo con su PIN).
+  Future<void> forgetAdmin(int peerId) async {
+    await _isar.writeTxn(() => _isar.syncPeers.delete(peerId));
+  }
+
+  /// Intenta sincronizar con todos los admins guardados sin molestar: pensado
+  /// para lanzarse solo al abrir/reanudar la app, para que el vinculado no
+  /// tenga que entrar a propósito a la pantalla de sync cada vez. Cualquier
+  /// error (el admin no está en la misma red ahora mismo, timeout, etc.) se
+  /// silencia — el usuario siempre puede sincronizar a mano si hace falta.
+  Future<void> tryBackgroundSyncAll() async {
+    for (final peer in await savedAdminPeers()) {
+      final parts = peer.lastAddress.split(':');
+      if (parts.length != 2 || peer.pairToken.isEmpty) continue;
+      final port = int.tryParse(parts[1]);
+      if (port == null) continue;
+      try {
+        await sync(
+          host: parts[0],
+          port: port,
+          timeout: const Duration(seconds: 8),
+          pollInterval: const Duration(milliseconds: 300),
+        );
+      } catch (_) {
+        // Silencioso a propósito: ver doc del método.
+      }
+    }
+  }
+
   Future<void> _upsertAdminPeer(PairResult res, String host, int port) async {
     await _isar.writeTxn(() async {
       final existing = await _isar.syncPeers
@@ -237,4 +290,14 @@ final linkedSyncServiceProvider = Provider<LinkedSyncService>((ref) {
     ref.watch(syncEngineProvider),
     ref.watch(settingsRepositoryProvider),
   );
+});
+
+/// Admins guardados en este dispositivo (vinculado): permite mostrar una
+/// lista de reconexión rápida sin volver a teclear IP/puerto/PIN.
+final savedAdminPeersProvider = StreamProvider<List<SyncPeer>>((ref) {
+  final isar = ref.watch(isarProvider);
+  return isar.syncPeers
+      .filter()
+      .remoteIsAdminEqualTo(true)
+      .watch(fireImmediately: true);
 });

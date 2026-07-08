@@ -7,6 +7,7 @@ import 'package:finanzas/features/sync/model/sync_decisions.dart';
 import 'package:finanzas/features/sync/net/lan_sync_client.dart';
 import 'package:finanzas/features/sync/net/lan_sync_server.dart';
 import 'package:finanzas/features/sync/net/sync_identity.dart';
+import 'package:finanzas/features/sync/net/sync_protocol.dart';
 import 'package:finanzas/features/sync/sync_engine.dart';
 import 'package:finanzas/features/sync/sync_service.dart';
 import 'package:isar_community/isar.dart';
@@ -57,7 +58,8 @@ void main() {
 
   test('emparejar + sincronizar deja ambas BD idénticas', () async {
     // El vinculado tiene datos.
-    final accId = await AccountRepository(linkedDb).save(Account()..name = 'Banco');
+    final accId =
+        await AccountRepository(linkedDb).save(Account()..name = 'Banco');
     await TransactionRepository(linkedDb).save(TransactionModel()
       ..concept = 'Café'
       ..amountCents = 250
@@ -68,7 +70,8 @@ void main() {
         LinkedSyncService(linkedDb, linkedEngine, SettingsRepository(linkedDb));
 
     // Emparejar con PIN.
-    final adminName = await linked.pair(host: '127.0.0.1', port: port, pin: '123456');
+    final adminName =
+        await linked.pair(host: '127.0.0.1', port: port, pin: '123456');
     expect(adminName, isNotEmpty);
 
     // Lanzar el sync; en paralelo el admin confirma la sesión que le llega.
@@ -80,7 +83,8 @@ void main() {
 
     ReviewSession? pending;
     while (pending == null) {
-      pending = server.debugSessions.isEmpty ? null : server.debugSessions.first;
+      pending =
+          server.debugSessions.isEmpty ? null : server.debugSessions.first;
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
     expect(pending.plan.additions, hasLength(2));
@@ -92,6 +96,36 @@ void main() {
 
     expect(await snapshot(adminEngine), await snapshot(linkedEngine));
     expect(await adminDb.accounts.where().count(), 1);
+  });
+
+  test(
+      'un pull vacío del vinculado trae los cambios propios del admin '
+      '(bidireccional, sin que nadie confirme nada)', () async {
+    final linked =
+        LinkedSyncService(linkedDb, linkedEngine, SettingsRepository(linkedDb));
+    await linked.pair(host: '127.0.0.1', port: port, pin: '123456');
+
+    // El admin tiene cambios propios que el vinculado aún no vio.
+    final accId =
+        await AccountRepository(adminDb).save(Account()..name = 'Efectivo');
+    await TransactionRepository(adminDb).save(TransactionModel()
+      ..concept = 'Cena'
+      ..amountCents = 1500
+      ..accountId = accId
+      ..date = DateTime(2026, 6, 2));
+
+    // El vinculado no tiene nada propio que enviar: solo quiere ponerse al día.
+    final outcome = await linked.sync(host: '127.0.0.1', port: port);
+
+    expect(outcome.rejected, isFalse);
+    expect(outcome.applied, greaterThan(0));
+    expect(await linkedDb.accounts.where().count(), 1);
+    expect(await linkedDb.transactions.where().count(), 1);
+    // No debe haber quedado ninguna sesión pendiente de revisión en el admin.
+    expect(
+        server.debugSessions
+            .every((s) => s.status != SyncSessionStatus.pending),
+        isTrue);
   });
 
   test('rechaza el emparejamiento con PIN incorrecto', () async {

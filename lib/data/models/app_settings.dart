@@ -22,8 +22,9 @@ class BalanceSubtotal {
       final m = jsonDecode(raw) as Map<String, dynamic>;
       return BalanceSubtotal(
         name: m['name'] as String? ?? '',
-        accountIds:
-            (m['ids'] as List<dynamic>? ?? const []).map((e) => e as int).toList(),
+        accountIds: (m['ids'] as List<dynamic>? ?? const [])
+            .map((e) => e as int)
+            .toList(),
       );
     } catch (_) {
       return null;
@@ -116,6 +117,19 @@ class AppSettings {
 
   /// Nombre legible de este dispositivo, mostrado al par al emparejar/sincronizar.
   String syncDeviceName = '';
+
+  /// Aviso local (recordatorio) para revisar la sincronización a una hora fija.
+  /// Solo tiene efecto en el admin (es quien revisa). Local: no se sincroniza
+  /// ni se incluye en el backup (es preferencia de este dispositivo).
+  bool syncReminderEnabled = false;
+
+  /// Hora/minuto del aviso (24h, hora local del dispositivo).
+  int syncReminderHour = 20;
+  int syncReminderMinute = 0;
+
+  /// Días de la semana en que suena el aviso (`DateTime.monday`..`DateTime.sunday`,
+  /// 1-7). Vacío = todos los días.
+  List<int> syncReminderWeekdays = [];
 
   // --- Migraciones ---
 

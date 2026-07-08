@@ -8,9 +8,11 @@ import 'app.dart';
 import 'core/db/isar_provider.dart';
 import 'core/db/isar_service.dart';
 import 'data/repositories/recurring_repository.dart';
+import 'data/repositories/settings_repository.dart';
 import 'data/seed_service.dart';
 import 'features/notifications/notification_service.dart';
 import 'features/quick_add/quick_add_popup.dart';
+import 'features/sync/sync_reminder_service.dart';
 
 /// Entrypoint del popup de alta rápida lanzado por el tile de Ajustes rápidos
 /// (Android `QuickAddActivity`). Abre solo un diálogo translúcido para añadir
@@ -45,8 +47,13 @@ Future<void> main() async {
   await SeedService(isar).seedIfEmpty();
   await RecurringRepository(isar).materializeDue();
 
-  // Reprogramar los avisos de recurrentes sin bloquear el arranque.
+  // Reprogramar avisos (recurrentes + recordatorio de sync) sin bloquear el
+  // arranque. Ambos comparten el plugin de notificaciones (ver
+  // `local_notifications.dart`); la primera llamada síncrona a
+  // `ensureNotificationsInitialized()` gana y la otra espera el mismo future,
+  // así que no hay doble inicialización aunque ninguna de las dos se espere.
   unawaited(RecurringNotificationService(isar).rescheduleAll());
+  unawaited(SyncReminderService(SettingsRepository(isar)).reschedule());
 
   runApp(
     ProviderScope(

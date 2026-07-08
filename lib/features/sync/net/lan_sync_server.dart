@@ -79,8 +79,8 @@ class LanSyncServer {
   Future<int> start({int port = SyncProtocol.defaultPort}) async {
     if (_server != null) return _server!.port;
     // anyIPv4 para aceptar conexiones de otros dispositivos de la LAN.
-    final server = await HttpServer.bind(InternetAddress.anyIPv4, port,
-        shared: true);
+    final server =
+        await HttpServer.bind(InternetAddress.anyIPv4, port, shared: true);
     _server = server;
     server.listen(_handle, onError: (_) {});
     return server.port;
@@ -94,9 +94,14 @@ class LanSyncServer {
 
   /// El admin confirma la revisión: aplica la fusión de forma atómica y deja el
   /// estado autoritativo listo para que el vinculado lo recoja.
-  Future<void> finalizeSession(String sessionId, SyncDecisions decisions) async {
+  Future<void> finalizeSession(
+      String sessionId, SyncDecisions decisions) async {
     final s = _sessions[sessionId];
     if (s == null) return;
+    await _finalize(s, decisions);
+  }
+
+  Future<void> _finalize(ReviewSession s, SyncDecisions decisions) async {
     final ownChangelog = await _engine.buildChangelog(s.since);
     final result = await _engine.mergeAsAdmin(
       incoming: s.incoming,
@@ -234,11 +239,21 @@ class LanSyncServer {
       plan: plan,
     );
     _sessions[session.id] = session;
-    onSession?.call(session);
+
+    if (plan.isEmpty) {
+      // Nada que decidir: el vinculado no trae altas/actualizaciones/conflictos,
+      // así que esto es solo una consulta de "¿qué hay nuevo?". Se resuelve sola
+      // para que el vinculado reciba los cambios propios del admin sin depender
+      // de que alguien note y confirme una sesión vacía — así el sync es de
+      // verdad bidireccional y no solo vinculado → admin.
+      await _finalize(session, SyncDecisions());
+    } else {
+      onSession?.call(session);
+    }
 
     _json(req, 200, {
       'sessionId': session.id,
-      'status': SyncSessionStatus.pending.name,
+      'status': session.status.name,
       'summary': {
         'new': plan.additions.length,
         'updates': plan.cleanUpdates.length,
@@ -255,7 +270,8 @@ class LanSyncServer {
       200,
       encodeSessionResponse(
         status: s.status,
-        authoritative: s.status == SyncSessionStatus.ready ? s.authoritative : null,
+        authoritative:
+            s.status == SyncSessionStatus.ready ? s.authoritative : null,
         newWatermark: s.newWatermark,
       ),
     );

@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/router/app_router.dart';
+import '../../data/models/app_settings.dart';
+import '../../data/models/sync_peer.dart';
 import '../../data/repositories/settings_repository.dart';
 import 'net/lan_sync_server.dart';
 import 'net/sync_protocol.dart';
+import 'net/sync_qr.dart';
+import 'qr_scan_screen.dart';
+import 'sync_reminder_planner.dart';
+import 'sync_reminder_service.dart';
 import 'sync_review_screen.dart';
 import 'sync_service.dart';
 
@@ -115,6 +122,9 @@ class _ServerPanel extends ConsumerWidget {
             child: Text('Error: ${state.error}',
                 style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ),
+        const SizedBox(height: 16),
+        const _ReminderSection(),
+        const _LinkedDevicesSection(),
       ],
     );
   }
@@ -209,6 +219,131 @@ class _PendingSessionTile extends StatelessWidget {
   }
 }
 
+class _LinkedDevicesSection extends ConsumerWidget {
+  const _LinkedDevicesSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final peers = ref.watch(linkedPeersProvider).valueOrNull ?? const [];
+    if (peers.isEmpty) return const SizedBox.shrink();
+    final controller = ref.read(syncServerControllerProvider.notifier);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Text('Dispositivos vinculados',
+            style: Theme.of(context).textTheme.titleSmall),
+        for (final peer in peers)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.smartphone),
+              title: Text(peer.displayName),
+              subtitle: Text(peer.lastSyncAt == null
+                  ? 'Aún no ha sincronizado'
+                  : 'Último sync: '
+                      '${DateFormat('d MMM, HH:mm', 'es_ES').format(peer.lastSyncAt!)}'),
+              trailing: IconButton(
+                icon: const Icon(Icons.link_off),
+                tooltip: 'Olvidar (revoca su acceso)',
+                onPressed: () => controller.forgetLinkedPeer(peer.id),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ReminderSection extends ConsumerWidget {
+  const _ReminderSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(currentSettingsProvider);
+    final repo = ref.read(settingsRepositoryProvider);
+    final reminderService = ref.read(syncReminderServiceProvider);
+
+    Future<void> update(void Function(AppSettings) mutate) async {
+      await repo.update(mutate);
+      await reminderService.reschedule();
+    }
+
+    final days = resolveReminderWeekdays(settings.syncReminderWeekdays);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Recordatorio de sincronización'),
+              subtitle: const Text(
+                  'Un aviso a una hora fija para acordarte de revisar los '
+                  'cambios de los dispositivos vinculados.'),
+              value: settings.syncReminderEnabled,
+              onChanged: (v) => update((s) => s.syncReminderEnabled = v),
+            ),
+            if (settings.syncReminderEnabled) ...[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Hora'),
+                trailing: Text(
+                  '${settings.syncReminderHour.toString().padLeft(2, '0')}:'
+                  '${settings.syncReminderMinute.toString().padLeft(2, '0')}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                onTap: () async {
+                  final picked = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay(
+                        hour: settings.syncReminderHour,
+                        minute: settings.syncReminderMinute),
+                  );
+                  if (picked != null) {
+                    await update((s) {
+                      s.syncReminderHour = picked.hour;
+                      s.syncReminderMinute = picked.minute;
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 4),
+              Text('Días', style: Theme.of(context).textTheme.labelMedium),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 4,
+                children: [
+                  for (final day in allWeekdays)
+                    FilterChip(
+                      label: Text(_weekdayLabel(day)),
+                      selected: days.contains(day),
+                      onSelected: (selected) {
+                        final next = {...days};
+                        if (selected) {
+                          next.add(day);
+                        } else if (next.length > 1) {
+                          next.remove(day);
+                        }
+                        update((s) =>
+                            s.syncReminderWeekdays = next.toList()..sort());
+                      },
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _weekdayLabel(int day) =>
+      const ['L', 'M', 'X', 'J', 'V', 'S', 'D'][day - 1];
+}
+
 // ===================== VINCULADO =====================
 
 class _ClientPanel extends ConsumerStatefulWidget {
@@ -223,6 +358,8 @@ class _ClientPanelState extends ConsumerState<_ClientPanel> {
   final _pin = TextEditingController();
   bool _busy = false;
   bool _paired = false;
+  bool _showForm = false;
+  bool _autoSelected = false;
   String? _status;
 
   @override
@@ -233,7 +370,31 @@ class _ClientPanelState extends ConsumerState<_ClientPanel> {
     super.dispose();
   }
 
-  int get _portNum => int.tryParse(_port.text.trim()) ?? SyncProtocol.defaultPort;
+  int get _portNum =>
+      int.tryParse(_port.text.trim()) ?? SyncProtocol.defaultPort;
+
+  void _selectSaved(SyncPeer peer) {
+    final parts = peer.lastAddress.split(':');
+    setState(() {
+      _host.text = parts.isNotEmpty ? parts[0] : '';
+      _port.text = parts.length > 1 ? parts[1] : '${SyncProtocol.defaultPort}';
+      _paired = true;
+      _showForm = false;
+      _status = null;
+    });
+  }
+
+  Future<void> _forget(SyncPeer peer) async {
+    final wasSelected = _host.text == peer.lastAddress.split(':').first;
+    await ref.read(linkedSyncServiceProvider).forgetAdmin(peer.id);
+    if (wasSelected && mounted) {
+      setState(() {
+        _paired = false;
+        _host.clear();
+        _pin.clear();
+      });
+    }
+  }
 
   Future<void> _pair() async {
     setState(() {
@@ -248,6 +409,7 @@ class _ClientPanelState extends ConsumerState<_ClientPanel> {
           );
       setState(() {
         _paired = true;
+        _showForm = false;
         _status = 'Emparejado con $name.';
       });
     } catch (e) {
@@ -255,6 +417,17 @@ class _ClientPanelState extends ConsumerState<_ClientPanel> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _scanQr() async {
+    final result = await Navigator.of(context).push<SyncQrPayload>(
+      MaterialPageRoute(builder: (_) => const QrScanScreen()),
+    );
+    if (result == null || !mounted) return;
+    _host.text = result.host;
+    _port.text = '${result.port}';
+    _pin.text = result.pin;
+    await _pair();
   }
 
   Future<void> _sync() async {
@@ -279,6 +452,14 @@ class _ClientPanelState extends ConsumerState<_ClientPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final saved = ref.watch(savedAdminPeersProvider).valueOrNull ?? const [];
+
+    if (!_autoSelected && !_paired && saved.isNotEmpty) {
+      _autoSelected = true;
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _selectSaved(saved.first));
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -286,63 +467,110 @@ class _ClientPanelState extends ConsumerState<_ClientPanel> {
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
-          'Ambos en la misma Wi-Fi. Escribe la IP, el puerto y el PIN que muestra '
-          'el principal.',
+          'Ambos en la misma Wi-Fi.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
+        if (saved.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text('Dispositivos guardados',
+              style: Theme.of(context).textTheme.titleSmall),
+          for (final peer in saved)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.smartphone),
+                title: Text(peer.displayName),
+                subtitle: Text(peer.lastAddress),
+                onTap: _busy ? null : () => _selectSaved(peer),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'Olvidar',
+                  onPressed: _busy ? null : () => _forget(peer),
+                ),
+              ),
+            ),
+        ],
         const SizedBox(height: 12),
-        TextField(
-          controller: _host,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'IP del principal',
-            hintText: '192.168.1.42',
-            border: OutlineInputBorder(),
+        if (_paired)
+          FilledButton.tonalIcon(
+            onPressed: _busy ? null : _sync,
+            icon: _busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.sync),
+            label: const Text('Sincronizar ahora'),
           ),
-        ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _port,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Puerto',
-                  border: OutlineInputBorder(),
+        TextButton.icon(
+          onPressed: () => setState(() => _showForm = !_showForm),
+          icon: Icon(_showForm ? Icons.expand_less : Icons.add_link),
+          label: Text(saved.isEmpty
+              ? 'Conectar con el principal'
+              : 'Añadir otro dispositivo'),
+        ),
+        if (_showForm || saved.isEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Escribe la IP, el puerto y el PIN que muestra el principal, o '
+            'escanea su código QR.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _host,
+                  decoration: const InputDecoration(
+                    labelText: 'IP del principal',
+                    hintText: '192.168.1.42',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _pin,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'PIN',
-                  border: OutlineInputBorder(),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                onPressed: _busy ? null : _scanQr,
+                icon: const Icon(Icons.qr_code_scanner),
+                tooltip: 'Escanear código QR',
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _port,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Puerto',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _busy ? null : _pair,
-          icon: const Icon(Icons.link),
-          label: const Text('Emparejar'),
-        ),
-        const SizedBox(height: 8),
-        FilledButton.tonalIcon(
-          onPressed: (_busy || !_paired) ? null : _sync,
-          icon: _busy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.sync),
-          label: const Text('Sincronizar ahora'),
-        ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _pin,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'PIN',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _busy ? null : _pair,
+            icon: const Icon(Icons.link),
+            label: const Text('Emparejar'),
+          ),
+        ],
         if (_status != null)
           Padding(
             padding: const EdgeInsets.only(top: 12),

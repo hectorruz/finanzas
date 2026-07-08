@@ -169,12 +169,46 @@ sondea (`GET /sync/session/{id}`) hasta recoger el estado autoritativo. La UI
 El tráfico es **HTTP plano en la LAN (sin cifrar)**: aceptable en red doméstica,
 protegido por token; queda pendiente TLS autofirmado.
 
+**De verdad bidireccional:** si el changelog entrante clasifica vacío (el
+vinculado no trae altas/actualizaciones/conflictos — solo quiere ponerse al
+día), `LanSyncServer._handleChangelog` **auto-finaliza la sesión en el momento**
+en vez de abrir una `ReviewSession` pendiente que exige un tap del admin. Así
+los cambios que solo existen en el admin llegan al vinculado con un único
+"Sincronizar ahora" suyo, sin depender de que alguien note y confirme una
+sesión vacía. Solo se pide revisión humana cuando hay algo real que decidir.
+
+**Dispositivos guardados y QR:** `SyncPeer` (vinculado: `remoteIsAdmin=true`;
+admin: `remoteIsAdmin=false`) persiste el emparejamiento (token + `lastAddress`),
+así que la pantalla de sync no vuelve a pedir IP/puerto/PIN — el vinculado ve
+sus admins guardados (`savedAdminPeersProvider`) y el admin sus vinculados
+(`linkedPeersProvider`), ambos con una acción "olvidar" (borra el `SyncPeer`;
+en el admin revoca el token al instante). El QR del admin (`finanzas-sync:
+host=..;port=..;pin=..`, `_PairingInfo`) se puede escanear desde el vinculado
+(`qr_scan_screen.dart` + `mobile_scanner`, parseo puro en `net/sync_qr.dart`)
+en vez de teclearlo.
+
+**Recordatorio + auto-sync silencioso:** el admin puede programar un aviso
+local diario o en días concretos (`AppSettings.syncReminder*`, local, no se
+sincroniza ni se respalda; `SyncReminderService` + `sync_reminder_planner.dart`)
+que al tocarlo abre la pantalla de sync. El vinculado, en cambio, intenta
+sincronizar solo (silencioso, mejor esfuerzo) al abrir o reanudar la app
+(`LinkedSyncService.tryBackgroundSyncAll`, `app.dart`), para no depender de que
+la persona entre a propósito a la pantalla de sync cada vez. Ambas features de
+notificación comparten un único plugin/inicialización
+(`core/notifications/local_notifications.dart`): `RecurringNotificationService`
+y `SyncReminderService` cancelan **solo sus propios ids** (nunca `cancelAll()`)
+para no pisarse la programación entre sí.
+
 **Caveat (foreground service):** hoy el servidor corre dentro del proceso de la
-app (`dart:io`), así que solo vive con la app en primer plano. Para mantenerlo
-con la pantalla apagada en Android hace falta un **foreground service**
-(p. ej. `flutter_foreground_task`) con notificación persistente y permisos
-`FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC`; es el siguiente paso de
-integración nativa. En iOS los servidores en segundo plano están muy restringidos.
+app (`dart:io`), así que solo vive con la app en primer plano. El auto-sync
+silencioso del vinculado tiene la misma limitación: solo dispara si su app está
+abierta (aunque sea en segundo plano) en el momento del intento — con la app
+totalmente cerrada no hay nada corriendo que reaccione al aviso del admin. Para
+un sync realmente en segundo plano con la pantalla apagada hace falta un
+**foreground service** (p. ej. `flutter_foreground_task`) con notificación
+persistente y permisos `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC`; es
+el siguiente paso de integración nativa. En iOS los servidores en segundo plano
+están muy restringidos.
 
 ### Webapp de escritorio (fase 4)
 
