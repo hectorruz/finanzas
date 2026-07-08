@@ -140,11 +140,13 @@ class SettingsScreen extends ConsumerWidget {
             value: settings.syncIsAdmin,
             onChanged: (v) => repo.update((s) => s.syncIsAdmin = v),
           ),
-          const ListTile(
-            leading: Icon(Icons.wifi_tethering),
-            title: Text('Sincronizar por Wi-Fi local'),
-            subtitle: Text('Disponible próximamente (servidor LAN).'),
-            enabled: false,
+          ListTile(
+            leading: const Icon(Icons.wifi_tethering),
+            title: const Text('Sincronizar por Wi-Fi local'),
+            subtitle: const Text(
+                'Fusiona los datos con otro dispositivo en la misma red'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(Routes.sync),
           ),
           const Divider(),
           const _SectionHeader('Datos'),

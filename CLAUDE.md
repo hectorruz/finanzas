@@ -29,6 +29,7 @@ And `android/app/src/main/AndroidManifest.xml`:
 - Add `com.google.mlkit.vision.DEPENDENCIES` meta-data with value `ocr`
 - Add `USE_BIOMETRIC` permission (required by `local_auth` for the app lock)
 - Register `QuickAddActivity` with `android:theme="@style/QuickAddTheme"`, `excludeFromRecents`, `taskAffinity=""`, `launchMode="singleInstance"` (the quick-add popup)
+- Add `INTERNET` and `ACCESS_NETWORK_STATE` permissions (required by the LAN sync server/client — the *release* manifest by default only has `INTERNET` in `debug`/`profile`, so add it to `main`). Without `INTERNET` the sync server silently fails in release builds.
 
 For the app lock (`local_auth`), `MainActivity` must extend `FlutterFragmentActivity` (not `FlutterActivity`); otherwise the biometric prompt crashes.
 
@@ -120,6 +121,50 @@ lib/
 ### Quick-add popup (second Flutter entrypoint)
 
 The Quick Settings tile opens a translucent popup to add only an income/expense, without launching the full app or passing the app lock. It runs a **separate Dart entrypoint** `quickAddMain` (`lib/main.dart`, annotated `@pragma('vm:entry-point')`) that opens Isar and runs `QuickAddPopupApp` (`lib/features/quick_add/`) — it does **not** mount `FinanzasApp`/`AppLockGate`. Android side: `QuickAddActivity` + `QuickAddTheme` (see setup). The popup reuses the app's theme via `DynamicColorBuilder` + `AppTheme`. Runs in its own engine/isolate; Isar supports multi-isolate access to the same instance.
+
+### Sincronización LAN (admin/vinculado)
+
+Sincroniza los datos entre dos dispositivos por Wi-Fi local, sin nube ni cuentas
+(`lib/features/sync/`). Principio innegociable: **ningún cambio se sobrescribe ni
+se descarta en silencio**; los timestamps solo *detectan* qué cambió, y los
+conflictos los resuelve una persona en la pantalla de revisión.
+
+Base de datos (fase 1): cada entidad sincronizable (`Account`, `Category`,
+`TransactionModel`, `RecurringRule`, `Receipt`, `Goal`) implementa `Syncable`
+(`lib/core/sync/`) con `uuid` (clave lógica estable entre dispositivos, los `Id`
+autoincrement no sirven), `updatedAt` y `deletedAt` (tombstone: los borrados se
+propagan como marca, nunca como DELETE). `MigrationService` hace el backfill
+idempotente en `IsarService.open()`. Los repositorios sellan en cada `save`
+(`stampForSave`) y convierten los borrados en soft-delete; toda lectura filtra
+`deletedAt == null`.
+
+Motor (fase 2, `sync_engine.dart`, sin red): `SyncCodec` traduce las FKs int
+locales a uuids y de vuelta; `classifyChanges` reparte lo entrante en
+nuevos / actualizaciones limpias / conflictos; `mergeAsAdmin` aplica las
+decisiones de forma **atómica** (dos fases para resolver FKs hacia adelante; el
+watermark del par solo avanza dentro de la misma `writeTxn`) y devuelve el estado
+autoritativo; `reconcileAsLinked` lo adopta y revierte lo denegado (una alta
+denegada se materializa como tombstone en ambos). `SyncPeer` guarda el par y su
+watermark; `AppSettings.syncDeviceId/syncIsAdmin/syncDeviceName` son locales (no
+se sincronizan ni se respaldan).
+
+Transporte (fase 3, `lib/features/sync/net/`): el admin levanta un servidor HTTP
+con `dart:io` `HttpServer` (`LanSyncServer`); el vinculado es cliente `http`
+(`LanSyncClient`). Emparejamiento por PIN de 6 dígitos (`POST /pair`, sin token)
+que devuelve un token; **toda otra petición exige `Authorization: Bearer <token>`**
+o responde 401. Flujo: el vinculado envía su changelog (`POST /sync/changelog`),
+el admin abre una `ReviewSession`, la persona revisa y confirma, y el vinculado
+sondea (`GET /sync/session/{id}`) hasta recoger el estado autoritativo. La UI
+(`sync_screen.dart` + `sync_review_screen.dart`) vive en Ajustes → Sincronización.
+El tráfico es **HTTP plano en la LAN (sin cifrar)**: aceptable en red doméstica,
+protegido por token; queda pendiente TLS autofirmado.
+
+**Caveat (foreground service):** hoy el servidor corre dentro del proceso de la
+app (`dart:io`), así que solo vive con la app en primer plano. Para mantenerlo
+con la pantalla apagada en Android hace falta un **foreground service**
+(p. ej. `flutter_foreground_task`) con notificación persistente y permisos
+`FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC`; es el siguiente paso de
+integración nativa. En iOS los servidores en segundo plano están muy restringidos.
 
 ### Privacy mode (hide amounts)
 

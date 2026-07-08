@@ -15,6 +15,7 @@ import '../../features/reports/report_screen.dart';
 import '../../features/settings/dashboard_config_screen.dart';
 import '../../features/settings/nav_config_screen.dart';
 import '../../features/sync/sync_review_screen.dart';
+import '../../features/sync/sync_screen.dart';
 
 /// Rutas con nombre de la app.
 class Routes {
@@ -29,6 +30,7 @@ class Routes {
   static const dashboardConfig = '/settings/dashboard';
   static const navConfig = '/settings/nav';
   static const reports = '/reports';
+  static const sync = '/settings/sync';
   static const syncReview = '/settings/sync/review';
 }
 
@@ -95,6 +97,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.reports,
         builder: (_, __) => const ReportScreen(),
+      ),
+      GoRoute(
+        path: Routes.sync,
+        builder: (_, __) => const SyncScreen(),
       ),
       GoRoute(
         path: Routes.syncReview,

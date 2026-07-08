@@ -114,6 +114,9 @@ class AppSettings {
   /// ("Hacer de este dispositivo el principal"): ambos guardan la BD completa.
   bool syncIsAdmin = false;
 
+  /// Nombre legible de este dispositivo, mostrado al par al emparejar/sincronizar.
+  String syncDeviceName = '';
+
   // --- Migraciones ---
 
   /// Versión del esquema de datos ya aplicada en esta BD. La usa el migrador

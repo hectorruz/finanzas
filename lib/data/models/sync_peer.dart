@@ -21,6 +21,15 @@ class SyncPeer {
   /// Si el par actúa como admin (árbitro) en la relación con este dispositivo.
   bool remoteIsAdmin = false;
 
+  /// Secreto compartido del emparejamiento. En el admin: el token que este par
+  /// debe presentar en cada petición. En el vinculado: el token que hay que
+  /// enviar al admin. Se genera al emparejar.
+  String pairToken = '';
+
+  /// Última dirección conocida del par (`host:port`) para reconectar sin volver
+  /// a teclear la IP.
+  String lastAddress = '';
+
   /// Marca temporal del último sync correcto: los cambios con `updatedAt` mayor
   /// que esto son los que se intercambian en el siguiente sync. Solo avanza tras
   /// una fusión confirmada por ambas partes.
