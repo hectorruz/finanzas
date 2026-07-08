@@ -130,6 +130,23 @@ class SettingsScreen extends ConsumerWidget {
             onChanged: (v) => _toggleAppLock(context, ref, v),
           ),
           const Divider(),
+          const _SectionHeader('Sincronización'),
+          SwitchListTile(
+            secondary: const Icon(Icons.devices),
+            title: const Text('Hacer de este dispositivo el principal'),
+            subtitle: const Text(
+                'El principal arbitra los conflictos al sincronizar. Ambos '
+                'guardan todos los datos.'),
+            value: settings.syncIsAdmin,
+            onChanged: (v) => repo.update((s) => s.syncIsAdmin = v),
+          ),
+          const ListTile(
+            leading: Icon(Icons.wifi_tethering),
+            title: Text('Sincronizar por Wi-Fi local'),
+            subtitle: Text('Disponible próximamente (servidor LAN).'),
+            enabled: false,
+          ),
+          const Divider(),
           const _SectionHeader('Datos'),
           ListTile(
             leading: const Icon(Icons.summarize),

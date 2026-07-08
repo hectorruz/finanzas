@@ -8,6 +8,7 @@ import '../../data/models/category.dart';
 import '../../data/models/goal.dart';
 import '../../data/models/receipt.dart';
 import '../../data/models/recurring_rule.dart';
+import '../../data/models/sync_peer.dart';
 import '../../data/models/transaction.dart';
 import 'migration_service.dart';
 
@@ -20,6 +21,7 @@ const List<CollectionSchema<dynamic>> kIsarSchemas = [
   ReceiptSchema,
   GoalSchema,
   AppSettingsSchema,
+  SyncPeerSchema,
 ];
 
 /// Abre (o crea) la instancia de Isar en el directorio de documentos de la app.

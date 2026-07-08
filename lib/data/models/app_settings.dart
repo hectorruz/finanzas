@@ -104,6 +104,16 @@ class AppSettings {
   /// El rango de fechas no se guarda aquí (es puntual en cada informe).
   String reportConfig = '';
 
+  // --- Sincronización ---
+
+  /// Identidad estable de **este** dispositivo para el sync (uuid generado una
+  /// vez). No se sincroniza ni se incluye en el backup (identifica al aparato).
+  String syncDeviceId = '';
+
+  /// Si este dispositivo actúa como admin (árbitro) del sync. Es solo un toggle
+  /// ("Hacer de este dispositivo el principal"): ambos guardan la BD completa.
+  bool syncIsAdmin = false;
+
   // --- Migraciones ---
 
   /// Versión del esquema de datos ya aplicada en esta BD. La usa el migrador
