@@ -40,6 +40,14 @@ And `android/app/src/main/AndroidManifest.xml`:
 - Register `QuickAddActivity` with `android:theme="@style/QuickAddTheme"`, `excludeFromRecents`, `taskAffinity=""`, `launchMode="singleInstance"` (the quick-add popup)
 - Add `INTERNET` and `ACCESS_NETWORK_STATE` permissions (required by the LAN sync server/client — the *release* manifest by default only has `INTERNET` in `debug`/`profile`, so add it to `main`). Without `INTERNET` the sync server silently fails in release builds.
 - Add `POST_NOTIFICATIONS` and `RECEIVE_BOOT_COMPLETED` permissions and register the `flutter_local_notifications` boot receiver (`ScheduledNotificationBootReceiver` + `ScheduledNotificationReceiver`) so recurring-charge reminders survive a reboot. The app uses **inexact** scheduling, so `SCHEDULE_EXACT_ALARM` is NOT needed.
+- Add `WRITE_EXTERNAL_STORAGE` with `android:maxSdkVersion="29"` (required by `gal` to copy receipt photos into a gallery album on Android ≤ 9; API 30+ writes via MediaStore without any permission).
+- Add `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC` permissions and declare the `flutter_foreground_task` service (**do not rename it**) so the sync server can stay alive in the background:
+  ```xml
+  <service
+      android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+      android:foregroundServiceType="dataSync"
+      android:exported="false" />
+  ```
 
 For the app lock (`local_auth`), `MainActivity` must extend `FlutterFragmentActivity` (not `FlutterActivity`); otherwise the biometric prompt crashes.
 
@@ -180,13 +188,39 @@ sondea (`GET /sync/session/{id}`) hasta recoger el estado autoritativo. La UI
 El tráfico es **HTTP plano en la LAN (sin cifrar)**: aceptable en red doméstica,
 protegido por token; queda pendiente TLS autofirmado.
 
-**De verdad bidireccional:** si el changelog entrante clasifica vacío (el
-vinculado no trae altas/actualizaciones/conflictos — solo quiere ponerse al
-día), `LanSyncServer._handleChangelog` **auto-finaliza la sesión en el momento**
-en vez de abrir una `ReviewSession` pendiente que exige un tap del admin. Así
-los cambios que solo existen en el admin llegan al vinculado con un único
-"Sincronizar ahora" suyo, sin depender de que alguien note y confirme una
-sesión vacía. Solo se pide revisión humana cuando hay algo real que decidir.
+**Revisión solo si hay conflicto:** `LanSyncServer._handleChangelog` auto-finaliza
+la sesión en el momento (con `SyncDecisions()` por defecto, que **acepta** todas
+las altas y actualizaciones limpias — ver `SyncEngine._resolveApproved`) siempre
+que `plan.conflicts` esté vacío. Solo abre una `ReviewSession` pendiente (que
+exige un tap del admin) cuando hay un **conflicto real** (ambos lados tocaron la
+misma entidad por uuid desde el último watermark). Así los cambios que solo
+existen en el admin —y las altas nuevas del vinculado— llegan con un único
+"Sincronizar ahora", sin depender de que alguien confirme una sesión.
+
+**Emparejar borrando este dispositivo (evita duplicados):** un móvil recién
+instalado ya sembró sus categorías/cuentas por defecto (`SeedService`) con uuids
+nuevos; al fusionar, el admin no las conoce → se añadirían en ambos lados
+(duplicados). Por eso el panel del vinculado (`sync_screen.dart`) ofrece, bajo
+los campos IP/puerto/PIN, un check **"Borrar datos de este dispositivo"**: al
+confirmar, `BackupService.wipeSyncableData()` limpia las 6 colecciones
+sincronizables + `merchantRules` (sin tocar `settings` ni `syncPeers`), empareja
+y sincroniza, adoptando los datos del principal. Como defensa de raíz,
+`SeedService.seedIfEmpty()` **no siembra** si ya existe un `SyncPeer`
+`remoteIsAdmin==true` (este dispositivo es un vinculado que adopta del admin).
+
+**Filtro de IP:** `localIpv4Addresses()` (`sync_identity.dart`) devuelve solo las
+IPv4 del **mejor rango LAN presente** (`192.168/16` > `172.16/12` > `10/8` >
+resto, descartando link-local `169.254`) vía `preferLanAddresses` (pura,
+testeada). Así el emparejamiento y la dirección de la webapp muestran la IP de la
+Wi-Fi buena y no la de datos móviles/VPN.
+
+**Ajustes del servidor** (`server_settings_screen.dart`, Ajustes →
+"Ajustes del servidor"): campos **locales** de `AppSettings` (no se sincronizan
+ni se respaldan) — `syncPort`, `syncRequirePin` + `syncFixedPin` (PIN fijo o
+aleatorio, o sin PIN), `syncKeepAliveInBackground`, `syncAutoStartServer`,
+`syncLinkedAutoSyncEnabled`. `SyncServerController.start()` lee puerto/PIN al
+arrancar; `restart()` los aplica en caliente. Extras: regenerar PIN, revocar
+todos los vinculados (`revokeAllLinkedPeers`), registro de actividad.
 
 **Dispositivos guardados y QR:** `SyncPeer` (vinculado: `remoteIsAdmin=true`;
 admin: `remoteIsAdmin=false`) persiste el emparejamiento (token + `lastAddress`),
@@ -210,16 +244,21 @@ notificación comparten un único plugin/inicialización
 y `SyncReminderService` cancelan **solo sus propios ids** (nunca `cancelAll()`)
 para no pisarse la programación entre sí.
 
-**Caveat (foreground service):** hoy el servidor corre dentro del proceso de la
-app (`dart:io`), así que solo vive con la app en primer plano. El auto-sync
-silencioso del vinculado tiene la misma limitación: solo dispara si su app está
-abierta (aunque sea en segundo plano) en el momento del intento — con la app
-totalmente cerrada no hay nada corriendo que reaccione al aviso del admin. Para
-un sync realmente en segundo plano con la pantalla apagada hace falta un
-**foreground service** (p. ej. `flutter_foreground_task`) con notificación
-persistente y permisos `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC`; es
-el siguiente paso de integración nativa. En iOS los servidores en segundo plano
+**Servicio en primer plano (mantener el servidor vivo):** con
+`syncKeepAliveInBackground` activo, `SyncServerController.start()/stop()` arranca
+y para un servicio en primer plano (`sync_foreground_service.dart`, sobre
+`flutter_foreground_task`) con notificación persistente. Su único fin es evitar
+que Android mate el proceso: el `HttpServer` sigue en el isolate principal y el
+task handler no hace trabajo. **Limitación:** con la app **cerrada del todo**
+(deslizada de recientes) el servicio puede pararse según el fabricante; cubre
+pantalla apagada / app en segundo plano. En iOS los servidores en segundo plano
 están muy restringidos.
+
+**Auto-sync del vinculado:** con `syncLinkedAutoSyncEnabled` (por defecto true),
+`app.dart` intenta `tryBackgroundSyncAll()` al abrir/reanudar la app y, vía
+`connectivity_plus`, **al conectarse a una Wi-Fi** (aproxima "ambos en la misma
+red" por alcanzabilidad del admin guardado; sin descubrimiento mDNS). Con
+`syncAutoStartServer`, el admin levanta el servidor solo al abrir la app.
 
 ### Webapp de escritorio (fase 4)
 
@@ -303,6 +342,13 @@ El OCR es **on-device** (ML Kit Text Recognition) y la pantalla de escaneo es la
 - **Imágenes**: la foto se adjunta al ticket (copia persistente) pero **no se
   sincroniza** (`imagePath` no viaja en el codec); cada dispositivo guarda las
   suyas.
+- **Álbum en la galería** (`gal`, `receipt_image_store.dart`
+  `saveReceiptToGallery`): al guardar un ticket con foto nueva se copia también
+  al álbum "Finanzas" de la galería del móvil, para poder verlo desde la app de
+  Galería/Fotos. Es **mejor esfuerzo** (no lanza si no hay permiso ni interrumpe
+  el guardado); la copia persistente de la app en `receipts/` sigue siendo la
+  fuente de verdad. El detalle del ticket tiene además un botón "Guardar en
+  galería" para volcar tickets antiguos al álbum bajo demanda.
 
 ### Privacy mode (hide amounts)
 

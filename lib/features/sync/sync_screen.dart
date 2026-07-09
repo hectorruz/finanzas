@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/router/app_router.dart';
+import '../../data/backup_service.dart';
 import '../../data/models/app_settings.dart';
 import '../../data/models/sync_peer.dart';
 import '../../data/repositories/settings_repository.dart';
@@ -139,6 +140,7 @@ class _PairingInfo extends StatelessWidget {
     final ip = state.ips.isNotEmpty ? state.ips.first : '—';
     final port = state.port ?? SyncProtocol.defaultPort;
     final payload = 'finanzas-sync:host=$ip;port=$port;pin=${state.pin}';
+    final pinText = state.requirePin ? state.pin : 'No requerido';
 
     return Card(
       child: Padding(
@@ -155,7 +157,7 @@ class _PairingInfo extends StatelessWidget {
             const SizedBox(height: 12),
             _kv(context, 'IP', state.ips.isEmpty ? '—' : state.ips.join(', ')),
             _kv(context, 'Puerto', '$port'),
-            _kv(context, 'PIN', state.pin, big: true),
+            _kv(context, 'PIN', pinText, big: state.requirePin),
             const SizedBox(height: 4),
             Text(
               'Introduce estos datos (o escanea el QR) en el otro dispositivo.',
@@ -360,6 +362,7 @@ class _ClientPanelState extends ConsumerState<_ClientPanel> {
   bool _paired = false;
   bool _showForm = false;
   bool _autoSelected = false;
+  bool _wipeOnPair = false;
   String? _status;
 
   @override
@@ -397,26 +400,78 @@ class _ClientPanelState extends ConsumerState<_ClientPanel> {
   }
 
   Future<void> _pair() async {
+    // Opción "borrar datos de este dispositivo": se confirma ANTES de tocar
+    // nada. Deja el móvil limpio para adoptar los datos del principal sin
+    // duplicar los defaults que sembró al instalarse.
+    if (_wipeOnPair && !await _confirmWipe()) return;
+
     setState(() {
       _busy = true;
       _status = null;
     });
+    final host = _host.text.trim();
+    final port = _portNum;
     try {
+      if (_wipeOnPair) {
+        await ref.read(backupServiceProvider).wipeSyncableData();
+      }
       final name = await ref.read(linkedSyncServiceProvider).pair(
-            host: _host.text.trim(),
-            port: _portNum,
+            host: host,
+            port: port,
             pin: _pin.text.trim(),
           );
       setState(() {
         _paired = true;
         _showForm = false;
-        _status = 'Emparejado con $name.';
+        _status = _wipeOnPair
+            ? 'Emparejado con $name. Sincronizando…'
+            : 'Emparejado con $name.';
       });
+      // Tras borrar, sincroniza de inmediato para adoptar los datos del
+      // principal y que ambos queden idénticos.
+      if (_wipeOnPair) {
+        final outcome =
+            await ref.read(linkedSyncServiceProvider).sync(host: host, port: port);
+        if (mounted) {
+          setState(() {
+            _wipeOnPair = false;
+            _status = outcome.rejected
+                ? 'Emparejado, pero el principal rechazó la sincronización.'
+                : 'Datos adoptados del principal ($name).';
+          });
+        }
+      }
     } catch (e) {
       setState(() => _status = 'No se pudo emparejar: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<bool> _confirmWipe() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Borrar datos de este dispositivo'),
+        content: const Text(
+          'Se borrarán las cuentas, categorías, movimientos, tickets y '
+          'objetivos de ESTE dispositivo, y adoptará los del principal al '
+          'sincronizar. Sirve para que ambos queden iguales, sin duplicados. '
+          'Esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Borrar y emparejar'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   Future<void> _scanQr() async {
@@ -564,11 +619,24 @@ class _ClientPanelState extends ConsumerState<_ClientPanel> {
               ),
             ],
           ),
+          const SizedBox(height: 4),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _wipeOnPair,
+            onChanged: _busy
+                ? null
+                : (v) => setState(() => _wipeOnPair = v ?? false),
+            title: const Text('Borrar datos de este dispositivo'),
+            subtitle: const Text(
+                'Empieza en limpio y adopta los datos del principal (evita '
+                'categorías duplicadas al vincular un móvil recién instalado).'),
+          ),
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: _busy ? null : _pair,
-            icon: const Icon(Icons.link),
-            label: const Text('Emparejar'),
+            icon: Icon(_wipeOnPair ? Icons.delete_sweep : Icons.link),
+            label: Text(_wipeOnPair ? 'Borrar y emparejar' : 'Emparejar'),
           ),
         ],
         if (_status != null)

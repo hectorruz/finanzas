@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -22,10 +23,17 @@ class FinanzasApp extends ConsumerStatefulWidget {
 
 class _FinanzasAppState extends ConsumerState<FinanzasApp>
     with WidgetsBindingObserver {
+  StreamSubscription<List<ConnectivityResult>>? _connSub;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Auto-sync al detectar que este dispositivo (vinculado) entra en una Wi-Fi:
+    // si el principal está en la misma red, se pone al día solo. Mejor esfuerzo.
+    _connSub = Connectivity()
+        .onConnectivityChanged
+        .listen(_onConnectivityChanged);
     // Acciones recibidas con la app ya abierta (tile vía onNewIntent).
     QuickTile.setActionHandler(_handleQuickAction);
     // Toque de una notificación con la app ya abierta (recordatorio de sync).
@@ -39,11 +47,22 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
       if (action != null) _handleQuickAction(action);
       await _checkNotificationLaunch();
       _tryBackgroundSync();
+      await _maybeAutoStartServer();
     });
+  }
+
+  /// Si este dispositivo es el principal y tiene activado el auto-inicio, levanta
+  /// el servidor al abrir la app sin que haya que pulsar "Activar servidor".
+  Future<void> _maybeAutoStartServer() async {
+    final s = await ref.read(settingsRepositoryProvider).getOrCreate();
+    if (s.syncIsAdmin && s.syncAutoStartServer) {
+      await ref.read(syncServerControllerProvider.notifier).start();
+    }
   }
 
   @override
   void dispose() {
+    _connSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -51,6 +70,10 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _tryBackgroundSync();
+  }
+
+  void _onConnectivityChanged(List<ConnectivityResult> results) {
+    if (results.contains(ConnectivityResult.wifi)) _tryBackgroundSync();
   }
 
   void _handleQuickAction(String action) {
@@ -76,6 +99,7 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
   /// misma red, se sincroniza solo. Si no es alcanzable ahora mismo, no pasa
   /// nada — el usuario siempre puede entrar a Sincronización y hacerlo a mano.
   void _tryBackgroundSync() {
+    if (!ref.read(currentSettingsProvider).syncLinkedAutoSyncEnabled) return;
     unawaited(ref.read(linkedSyncServiceProvider).tryBackgroundSyncAll());
   }
 

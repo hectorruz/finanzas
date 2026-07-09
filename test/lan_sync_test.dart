@@ -56,7 +56,7 @@ void main() {
     };
   }
 
-  test('emparejar + sincronizar deja ambas BD idénticas', () async {
+  test('altas sin conflicto convergen solas, sin revisión', () async {
     // El vinculado tiene datos.
     final accId =
         await AccountRepository(linkedDb).save(Account()..name = 'Banco');
@@ -74,28 +74,73 @@ void main() {
         await linked.pair(host: '127.0.0.1', port: port, pin: '123456');
     expect(adminName, isNotEmpty);
 
-    // Lanzar el sync; en paralelo el admin confirma la sesión que le llega.
-    final syncFuture = linked.sync(
+    // Solo altas (sin conflicto): se aplican solas, sin que el admin revise nada.
+    final outcome = await linked.sync(
       host: '127.0.0.1',
       port: port,
       pollInterval: const Duration(milliseconds: 20),
     );
-
-    ReviewSession? pending;
-    while (pending == null) {
-      pending =
-          server.debugSessions.isEmpty ? null : server.debugSessions.first;
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-    expect(pending.plan.additions, hasLength(2));
-    await server.finalizeSession(pending.id, SyncDecisions()); // aprobar todo
-
-    final outcome = await syncFuture;
     expect(outcome.rejected, isFalse);
     expect(outcome.applied, greaterThan(0));
 
     expect(await snapshot(adminEngine), await snapshot(linkedEngine));
     expect(await adminDb.accounts.where().count(), 1);
+    // No debe haber quedado ninguna sesión pendiente de revisión.
+    expect(
+        server.debugSessions
+            .every((s) => s.status != SyncSessionStatus.pending),
+        isTrue);
+  });
+
+  test('un conflicto real abre revisión y no se aplica sin decisión', () async {
+    final linked =
+        LinkedSyncService(linkedDb, linkedEngine, SettingsRepository(linkedDb));
+    await linked.pair(host: '127.0.0.1', port: port, pin: '123456');
+
+    // 1) El vinculado crea una cuenta y la sincroniza: ahora ambos la tienen
+    //    (mismo uuid). Al no haber conflicto, converge sola.
+    final accId =
+        await AccountRepository(linkedDb).save(Account()..name = 'Común');
+    await linked.sync(
+        host: '127.0.0.1', port: port, pollInterval: const Duration(milliseconds: 20));
+    expect(await adminDb.accounts.where().count(), 1);
+
+    // Aseguramos que las siguientes ediciones caen tras el watermark.
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    // 2) Ambos editan la MISMA cuenta tras el watermark → conflicto real.
+    final adminAcc = await adminDb.accounts.where().findFirst();
+    await AccountRepository(adminDb).save(adminAcc!..name = 'Admin');
+    await AccountRepository(linkedDb)
+        .save((await linkedDb.accounts.get(accId))!..name = 'Vinculado');
+
+    // 3) El vinculado sincroniza; el admin debe abrir una revisión pendiente.
+    final syncFuture = linked.sync(
+        host: '127.0.0.1', port: port, pollInterval: const Duration(milliseconds: 20));
+
+    ReviewSession? pending;
+    while (pending == null) {
+      final open = server.debugSessions
+          .where((s) => s.status == SyncSessionStatus.pending)
+          .toList();
+      pending = open.isEmpty ? null : open.first;
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(pending.plan.conflicts, hasLength(1));
+    expect(pending.plan.additions, isEmpty);
+
+    // El admin resuelve a favor del vinculado; entonces converge.
+    await server.finalizeSession(
+      pending.id,
+      SyncDecisions(conflictChoices: {
+        pending.plan.conflicts.first.uuid: ConflictChoice.keepRemote,
+      }),
+    );
+    final outcome = await syncFuture;
+    expect(outcome.rejected, isFalse);
+    expect(await snapshot(adminEngine), await snapshot(linkedEngine));
+    final acc = await adminDb.accounts.where().findFirst();
+    expect(acc!.name, 'Vinculado');
   });
 
   test(

@@ -37,9 +37,16 @@ dependencies:
 
   # Cámara / galería
   image_picker: ^1.1.2
+  # Guardar las fotos de los tickets en un álbum de la galería del dispositivo
+  gal: ^2.3.0
 
   # Red (cotizaciones Yahoo Finance + FX)
   http: ^1.2.1
+
+  # Mantener vivo el servidor de sync en segundo plano (servicio en primer plano)
+  flutter_foreground_task: ^8.10.0
+  # Detectar cambios de red (auto-sync al conectarse a la Wi-Fi)
+  connectivity_plus: ^6.1.0
 
   # Almacenamiento / import-export
   path_provider: ^2.1.3

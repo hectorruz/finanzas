@@ -48,6 +48,7 @@ class LanSyncServer {
     required SyncEngine engine,
     required this.identity,
     required this.pin,
+    this.requirePin = true,
     this.onSession,
     this.webRoot,
   })  : _isar = isar,
@@ -59,6 +60,11 @@ class LanSyncServer {
   final DataApi _dataApi;
   final SyncIdentity identity;
   final String pin;
+
+  /// Si es `false`, el emparejamiento **no exige PIN** (red de confianza): se
+  /// acepta cualquier `POST /pair`. Solo se debería desactivar en una LAN
+  /// doméstica de confianza (ver ajustes avanzados del servidor).
+  final bool requirePin;
 
   /// Carpeta con el build de la webapp de escritorio (`build/web`) a servir. Si
   /// es null o no existe, el servidor solo ofrece la API (sin webapp embebida).
@@ -200,7 +206,7 @@ class LanSyncServer {
 
   Future<void> _handlePair(HttpRequest req) async {
     final body = await _readJson(req);
-    if (body['pin'] != pin) {
+    if (requirePin && body['pin'] != pin) {
       return _json(req, 403, {'error': 'bad_pin'});
     }
     final deviceId = body['deviceId'] as String? ?? '';
@@ -240,12 +246,14 @@ class LanSyncServer {
     );
     _sessions[session.id] = session;
 
-    if (plan.isEmpty) {
-      // Nada que decidir: el vinculado no trae altas/actualizaciones/conflictos,
-      // así que esto es solo una consulta de "¿qué hay nuevo?". Se resuelve sola
-      // para que el vinculado reciba los cambios propios del admin sin depender
-      // de que alguien note y confirme una sesión vacía — así el sync es de
-      // verdad bidireccional y no solo vinculado → admin.
+    if (plan.conflicts.isEmpty) {
+      // No hay nada que **decidir**: solo altas y/o actualizaciones limpias (o
+      // una consulta vacía de "¿qué hay nuevo?"). Se resuelve sola con las
+      // decisiones por defecto (aceptar todo lo entrante; ver
+      // `SyncEngine._resolveApproved`), así el vinculado recibe también los
+      // cambios propios del admin sin que nadie tenga que confirmar una sesión.
+      // Solo se pide revisión humana cuando hay un conflicto real (ambos lados
+      // tocaron la misma entidad desde el último watermark).
       await _finalize(session, SyncDecisions());
     } else {
       onSession?.call(session);

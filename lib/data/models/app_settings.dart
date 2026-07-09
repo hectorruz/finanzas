@@ -118,6 +118,34 @@ class AppSettings {
   /// Nombre legible de este dispositivo, mostrado al par al emparejar/sincronizar.
   String syncDeviceName = '';
 
+  // --- Ajustes del servidor (local: no se sincroniza ni se respalda) ---
+
+  /// Puerto en el que escucha el servidor del admin. 0/ inválido → puerto por
+  /// defecto (`SyncProtocol.defaultPort`, 8422).
+  int syncPort = 8422;
+
+  /// Si el emparejamiento exige el PIN de 6 dígitos. Si es `false`, cualquiera
+  /// en la misma Wi-Fi puede emparejar sin código (solo en red de confianza).
+  bool syncRequirePin = true;
+
+  /// PIN de emparejamiento fijo (6 dígitos). Vacío = se genera uno aleatorio en
+  /// cada arranque del servidor.
+  String syncFixedPin = '';
+
+  /// Mantener el servidor vivo en segundo plano con un servicio en primer plano
+  /// (notificación persistente), para que siga respondiendo con la pantalla
+  /// apagada o la app en segundo plano.
+  bool syncKeepAliveInBackground = false;
+
+  /// Arrancar el servidor automáticamente al abrir la app (si este dispositivo
+  /// es el principal).
+  bool syncAutoStartServer = false;
+
+  /// El dispositivo vinculado intenta sincronizar solo (silencioso) al abrir o
+  /// reanudar la app y al conectarse a una Wi-Fi. Si es `false`, solo sincroniza
+  /// cuando la persona entra a propósito a la pantalla de sync.
+  bool syncLinkedAutoSyncEnabled = true;
+
   /// Aviso local (recordatorio) para revisar la sincronización a una hora fija.
   /// Solo tiene efecto en el admin (es quien revisa). Local: no se sincroniza
   /// ni se incluye en el backup (es preferencia de este dispositivo).

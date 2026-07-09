@@ -153,6 +153,17 @@ class _ReceiptDetailView extends ConsumerWidget {
           label: 'Gasto vinculado',
           value: receipt.transactionId != null ? 'Sí' : 'No',
         ),
+        if (hasImage) ...[
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => _saveToGallery(context, receipt.imagePath),
+            icon: const Icon(Icons.photo_library_outlined),
+            label: const Text('Guardar en galería'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         OutlinedButton.icon(
           onPressed: () => _delete(context, ref, receipt),
@@ -164,6 +175,20 @@ class _ReceiptDetailView extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _saveToGallery(BuildContext context, String imagePath) async {
+    final ok = await saveReceiptToGallery(imagePath);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Guardado en el álbum "$receiptsGalleryAlbum" de la galería'
+              : 'No se pudo guardar en la galería',
+        ),
+      ),
     );
   }
 

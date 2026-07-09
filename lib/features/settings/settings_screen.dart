@@ -151,6 +151,14 @@ class SettingsScreen extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push(Routes.sync),
           ),
+          ListTile(
+            leading: const Icon(Icons.dns_outlined),
+            title: const Text('Ajustes del servidor'),
+            subtitle: const Text(
+                'Nombre, segundo plano, puerto, PIN y dispositivos'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(Routes.serverSettings),
+          ),
           const Divider(),
           const _SectionHeader('Webapp de escritorio'),
           const _WebappSection(),

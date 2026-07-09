@@ -4,6 +4,7 @@ import '../core/sync/sync_stamp.dart';
 import 'models/account.dart';
 import 'models/category.dart';
 import 'models/enums.dart';
+import 'models/sync_peer.dart';
 
 /// Crea los datos por defecto la primera vez que se abre la app: cuentas
 /// "Banco" y "Efectivo" y un conjunto de categorías editables.
@@ -12,6 +13,17 @@ class SeedService {
   final Isar _isar;
 
   Future<void> seedIfEmpty() async {
+    // Si este dispositivo ya está vinculado a un principal, nunca auto-sembramos
+    // los defaults: adopta los datos del principal al sincronizar. Sembrarlos
+    // aquí (con uuids nuevos) reintroduciría categorías/cuentas duplicadas tras
+    // un "borrar datos de este dispositivo" si el sync aún no completó.
+    final isLinked = await _isar.syncPeers
+            .filter()
+            .remoteIsAdminEqualTo(true)
+            .count() >
+        0;
+    if (isLinked) return;
+
     final hasAccounts = await _isar.accounts.count() > 0;
     final hasCategories = await _isar.categories.count() > 0;
 

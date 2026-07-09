@@ -9,6 +9,7 @@ import '../../data/repositories/settings_repository.dart';
 import 'model/sync_decisions.dart';
 import 'net/lan_sync_client.dart';
 import 'net/lan_sync_server.dart';
+import 'net/sync_foreground_service.dart';
 import 'net/sync_identity.dart';
 import 'net/sync_protocol.dart';
 import 'net/webapp_assets.dart';
@@ -22,6 +23,7 @@ class SyncServerState {
     this.port,
     this.ips = const [],
     this.pin = '',
+    this.requirePin = true,
     this.pending = const [],
     this.error,
   });
@@ -30,6 +32,10 @@ class SyncServerState {
   final int? port;
   final List<String> ips;
   final String pin;
+
+  /// Si el emparejamiento exige PIN. Si es `false`, [pin] va vacío y la UI
+  /// indica que no hace falta código.
+  final bool requirePin;
   final List<ReviewSession> pending;
   final String? error;
 
@@ -38,6 +44,7 @@ class SyncServerState {
     int? port,
     List<String>? ips,
     String? pin,
+    bool? requirePin,
     List<ReviewSession>? pending,
     String? error,
   }) =>
@@ -46,6 +53,7 @@ class SyncServerState {
         port: port ?? this.port,
         ips: ips ?? this.ips,
         pin: pin ?? this.pin,
+        requirePin: requirePin ?? this.requirePin,
         pending: pending ?? this.pending,
         error: error,
       );
@@ -65,8 +73,16 @@ class SyncServerController extends StateNotifier<SyncServerState> {
   Future<void> start() async {
     if (state.running) return;
     try {
+      final settings = await _settings.getOrCreate();
       final identity = await ensureIdentity(_settings);
-      final pin = generatePin();
+      final requirePin = settings.syncRequirePin;
+      // PIN fijo si el usuario lo configuró; si no, aleatorio en cada arranque.
+      // Sin PIN si el emparejamiento no lo exige (red de confianza).
+      final pin = requirePin
+          ? (settings.syncFixedPin.trim().isNotEmpty
+              ? settings.syncFixedPin.trim()
+              : generatePin())
+          : '';
       // Si el build de la webapp está empaquetado (`assets/webapp.zip`), se
       // sirve desde aquí mismo; si no, el servidor sigue funcionando igual
       // (solo API) y `_serveStatic` muestra el placeholder.
@@ -76,19 +92,28 @@ class SyncServerController extends StateNotifier<SyncServerState> {
         engine: _engine,
         identity: identity,
         pin: pin,
+        requirePin: requirePin,
         onSession: _onSession,
         webRoot: webRoot,
       );
-      final port = await server.start();
+      final desiredPort =
+          settings.syncPort > 0 ? settings.syncPort : SyncProtocol.defaultPort;
+      final port = await server.start(port: desiredPort);
       _server = server;
+      final ips = await localIpv4Addresses();
       state = state.copyWith(
         running: true,
         port: port,
         pin: pin,
-        ips: await localIpv4Addresses(),
+        requirePin: requirePin,
+        ips: ips,
         pending: const [],
         error: null,
       );
+      // Mantener vivo el servidor en segundo plano (servicio en primer plano).
+      if (settings.syncKeepAliveInBackground) {
+        await startSyncForegroundService(address: _addressFor(ips, port));
+      }
     } catch (e) {
       state = state.copyWith(error: '$e');
     }
@@ -97,8 +122,46 @@ class SyncServerController extends StateNotifier<SyncServerState> {
   Future<void> stop() async {
     await _server?.stop();
     _server = null;
+    await stopSyncForegroundService();
     state = const SyncServerState();
   }
+
+  /// Reinicia el servidor (para aplicar cambios de puerto/PIN sin perder el
+  /// estado del controlador). No hace nada si no estaba activo.
+  Future<void> restart() async {
+    if (!state.running) return;
+    await stop();
+    await start();
+  }
+
+  /// Arranca/detiene el servicio en primer plano en caliente al cambiar el
+  /// interruptor con el servidor ya activo.
+  Future<void> applyKeepAlive(bool enabled) async {
+    if (!state.running) return;
+    if (enabled) {
+      await startSyncForegroundService(
+        address: _addressFor(state.ips, state.port ?? SyncProtocol.defaultPort),
+      );
+    } else {
+      await stopSyncForegroundService();
+    }
+  }
+
+  /// Revoca el acceso de **todos** los dispositivos vinculados de golpe (borra
+  /// sus tokens: su próxima petición dará 401 y tendrán que reemparejarse).
+  Future<void> revokeAllLinkedPeers() async {
+    await _isar.writeTxn(() async {
+      final ids = await _isar.syncPeers
+          .filter()
+          .remoteIsAdminEqualTo(false)
+          .idProperty()
+          .findAll();
+      await _isar.syncPeers.deleteAll(ids);
+    });
+  }
+
+  String _addressFor(List<String> ips, int port) =>
+      ips.isNotEmpty ? 'http://${ips.first}:$port' : 'Puerto $port';
 
   void _onSession(ReviewSession s) {
     state = state.copyWith(pending: [...state.pending, s]);

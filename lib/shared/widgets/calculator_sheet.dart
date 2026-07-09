@@ -186,17 +186,20 @@ class _CalcButton extends StatelessWidget {
     final isOperator = '÷×−+=('.contains(label) || label == ')';
     final isAction = label == 'C' || label == '⌫';
 
+    // Los botones siguen el color de acento (primary): el `=` en acento sólido,
+    // los operadores en su contenedor; los números y las acciones (C/⌫) quedan
+    // neutros para no competir con el acento.
     final Color? bg;
     final Color? fg;
     if (label == '=') {
+      bg = theme.colorScheme.primary;
+      fg = theme.colorScheme.onPrimary;
+    } else if (isOperator) {
       bg = theme.colorScheme.primaryContainer;
       fg = theme.colorScheme.onPrimaryContainer;
-    } else if (isOperator) {
-      bg = theme.colorScheme.secondaryContainer;
-      fg = theme.colorScheme.onSecondaryContainer;
     } else if (isAction) {
-      bg = theme.colorScheme.errorContainer;
-      fg = theme.colorScheme.onErrorContainer;
+      bg = theme.colorScheme.surfaceContainerHighest;
+      fg = theme.colorScheme.onSurfaceVariant;
     } else {
       bg = theme.colorScheme.surfaceContainerHigh;
       fg = theme.colorScheme.onSurface;

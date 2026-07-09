@@ -234,10 +234,12 @@ class _ReceiptScanScreenState extends ConsumerState<ReceiptScanScreen> {
     }
     if (!mounted) return;
 
-    // Copia la imagen recién elegida a almacenamiento persistente.
+    // Copia la imagen recién elegida a almacenamiento persistente y también al
+    // álbum de la galería, para poder ver el ticket desde la app de Galería.
     var imagePath = _imagePath ?? '';
     if (_imageChanged && _imagePath != null) {
       imagePath = await persistReceiptImage(_imagePath!);
+      await saveReceiptToGallery(imagePath);
     }
 
     final merchant = _merchantController.text.trim();

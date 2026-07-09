@@ -13,6 +13,7 @@ import 'models/app_settings.dart';
 import 'models/category.dart';
 import 'models/enums.dart';
 import 'models/goal.dart';
+import 'models/merchant_rule.dart';
 import 'models/receipt.dart';
 import 'models/recurring_rule.dart';
 import 'models/transaction.dart';
@@ -105,6 +106,23 @@ class BackupService {
       await _isar.receipts.clear();
       await _isar.goals.clear();
       await _isar.settings.clear();
+    });
+  }
+
+  /// Borra **solo** los datos sincronizables (las 6 colecciones de dominio y la
+  /// memoria local de comercios), preservando `settings` (identidad/config de
+  /// este dispositivo) y `syncPeers` (los emparejamientos). Se usa al emparejar
+  /// con la opción "borrar datos de este dispositivo": deja el móvil limpio para
+  /// adoptar los datos del principal sin duplicar los defaults sembrados.
+  Future<void> wipeSyncableData() async {
+    await _isar.writeTxn(() async {
+      await _isar.accounts.clear();
+      await _isar.categories.clear();
+      await _isar.transactions.clear();
+      await _isar.recurringRules.clear();
+      await _isar.receipts.clear();
+      await _isar.goals.clear();
+      await _isar.merchantRules.clear();
     });
   }
 

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Carpeta (dentro del almacenamiento de la app) donde se guardan de forma
@@ -31,6 +32,28 @@ Future<String> persistReceiptImage(String pickedPath) async {
     return dest;
   } catch (_) {
     return pickedPath;
+  }
+}
+
+/// Nombre del álbum de la galería del dispositivo donde se copian las fotos de
+/// los tickets, para poder verlas desde la app de Galería/Fotos del móvil.
+const receiptsGalleryAlbum = 'Finanzas';
+
+/// Copia [imagePath] al álbum [receiptsGalleryAlbum] de la galería del
+/// dispositivo. Es **mejor esfuerzo**: si no hay permiso o falla, devuelve
+/// `false` sin lanzar, para no interrumpir el guardado del ticket (la copia
+/// persistente de la app en `receipts/` sigue siendo la fuente de verdad).
+Future<bool> saveReceiptToGallery(String imagePath) async {
+  if (imagePath.isEmpty) return false;
+  try {
+    if (!await File(imagePath).exists()) return false;
+    if (!await Gal.hasAccess(toAlbum: true)) {
+      if (!await Gal.requestAccess(toAlbum: true)) return false;
+    }
+    await Gal.putImage(imagePath, album: receiptsGalleryAlbum);
+    return true;
+  } catch (_) {
+    return false;
   }
 }
 

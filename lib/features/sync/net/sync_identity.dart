@@ -51,8 +51,13 @@ String generatePin() {
 }
 
 /// Direcciones IPv4 no-loopback de este dispositivo (para mostrar al usuario).
+///
+/// Se filtran/ordenan para mostrar **solo la red LAN buena**: se prioriza el
+/// rango de una Wi-Fi doméstica y se devuelven **solo** las direcciones del
+/// primer rango presente, para no confundir con IPs de datos móviles, VPN o
+/// interfaces virtuales (p. ej. una `10.x` junto a la `192.168.x` real).
 Future<List<String>> localIpv4Addresses() async {
-  final out = <String>[];
+  final all = <String>[];
   try {
     final interfaces = await NetworkInterface.list(
       type: InternetAddressType.IPv4,
@@ -60,11 +65,42 @@ Future<List<String>> localIpv4Addresses() async {
     );
     for (final ni in interfaces) {
       for (final addr in ni.addresses) {
-        out.add(addr.address);
+        all.add(addr.address);
       }
     }
   } catch (_) {
     // Sin permisos/entorno de red: devolvemos vacío y la UI pide IP manual.
   }
-  return out;
+  return preferLanAddresses(all);
+}
+
+/// Rango de prioridad de una IPv4: menor = mejor. `-1` = descartar
+/// (link-local `169.254.x`, no sirve para hablar con otro dispositivo).
+int _ipv4Rank(String ip) {
+  if (ip.startsWith('169.254.')) return -1; // link-local: inútil
+  if (ip.startsWith('192.168.')) return 0; // Wi-Fi doméstica típica
+  if (_is172Private(ip)) return 1; // 172.16.0.0/12
+  if (ip.startsWith('10.')) return 2; // datos móviles/VPN/redes grandes
+  return 3; // cualquier otra ruteable
+}
+
+bool _is172Private(String ip) {
+  if (!ip.startsWith('172.')) return false;
+  final second = int.tryParse(ip.split('.').elementAt(1));
+  return second != null && second >= 16 && second <= 31;
+}
+
+/// De todas las IPv4 locales, devuelve **solo** las del rango de mayor prioridad
+/// presente (ver [_ipv4Rank]). Función pura para poder testearla sin red.
+List<String> preferLanAddresses(List<String> addresses) {
+  final ranked = addresses
+      .map((ip) => (ip: ip, rank: _ipv4Rank(ip)))
+      .where((e) => e.rank >= 0)
+      .toList();
+  if (ranked.isEmpty) return const [];
+  final best = ranked.map((e) => e.rank).reduce((a, b) => a < b ? a : b);
+  return [
+    for (final e in ranked)
+      if (e.rank == best) e.ip,
+  ];
 }
