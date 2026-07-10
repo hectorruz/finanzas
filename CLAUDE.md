@@ -41,11 +41,12 @@ And `android/app/src/main/AndroidManifest.xml`:
 - Add `INTERNET` and `ACCESS_NETWORK_STATE` permissions (required by the LAN sync server/client — the *release* manifest by default only has `INTERNET` in `debug`/`profile`, so add it to `main`). Without `INTERNET` the sync server silently fails in release builds.
 - Add `POST_NOTIFICATIONS` and `RECEIVE_BOOT_COMPLETED` permissions and register the `flutter_local_notifications` boot receiver (`ScheduledNotificationBootReceiver` + `ScheduledNotificationReceiver`) so recurring-charge reminders survive a reboot. The app uses **inexact** scheduling, so `SCHEDULE_EXACT_ALARM` is NOT needed.
 - Add `WRITE_EXTERNAL_STORAGE` with `android:maxSdkVersion="29"` (required by `gal` to copy receipt photos into a gallery album on Android ≤ 9; API 30+ writes via MediaStore without any permission).
-- Add `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC` permissions and declare the `flutter_foreground_task` service (**do not rename it**) so the sync server can stay alive in the background:
+- Add `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC` permissions and declare the `flutter_foreground_task` service (**do not rename it**) so the sync server can stay alive in the background. Include `android:stopWithTask="true"` so that swiping the app out of recents stops the service **and removes its persistent notification** (otherwise the notification is orphaned once the `HttpServer` — which lives in the main isolate — dies with the process). `stopWithTask` only fires on task removal, so the keep-alive still works for screen-off / background:
   ```xml
   <service
       android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
       android:foregroundServiceType="dataSync"
+      android:stopWithTask="true"
       android:exported="false" />
   ```
 

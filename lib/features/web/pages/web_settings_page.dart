@@ -8,8 +8,9 @@ import '../widgets/web_pickers.dart';
 import '../widgets/web_ui.dart';
 
 /// Ajustes de la webapp: tema, privacidad, tarjetas del panel e info del
-/// servidor. El tema/privacidad/tarjetas se guardan en los ajustes del móvil
-/// (mismo `AppSettings`), así que también afectan a la app.
+/// servidor. El modo/color del tema y las tarjetas se guardan en los ajustes del
+/// móvil (mismo `AppSettings`), así que también afectan a la app; el AMOLED, en
+/// cambio, es local a este navegador (ver [webAmoledOverrideProvider]).
 class WebSettingsPage extends ConsumerWidget {
   const WebSettingsPage({super.key});
 
@@ -77,8 +78,14 @@ class WebSettingsPage extends ConsumerWidget {
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Negro puro (AMOLED) en oscuro'),
-                      value: settings.amoled,
-                      onChanged: (v) => patch({'amoled': v}),
+                      subtitle: const Text(
+                          'Solo en este navegador; no cambia el tema del móvil.'),
+                      value: ref.watch(webAmoledOverrideProvider) ??
+                          settings.amoled,
+                      onChanged: (v) {
+                        WebSession.amoled = v;
+                        ref.read(webAmoledOverrideProvider.notifier).state = v;
+                      },
                     ),
                     const SizedBox(height: 8),
                     Text('Color de acento',

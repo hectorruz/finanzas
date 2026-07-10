@@ -239,8 +239,9 @@ class _MovementsTable extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final isIncome = t.type == TransactionType.income;
     final isTransfer = t.type == TransactionType.transfer;
-    final color =
-        isIncome ? Colors.green : (isTransfer ? scheme.outline : scheme.error);
+    final color = isIncome
+        ? Colors.green
+        : (isTransfer ? scheme.onSurfaceVariant : scheme.error);
     final catName = t.categoryId == null
         ? (isTransfer ? 'Transferencia' : '—')
         : webCategoryPath(t.categoryId, categories);
@@ -258,7 +259,9 @@ class _MovementsTable extends ConsumerWidget {
         DataCell(Text(catName, overflow: TextOverflow.ellipsis)),
         DataCell(Text(accountName, overflow: TextOverflow.ellipsis)),
         DataCell(WebMoneyText(
-          isIncome ? t.amountCents : (isTransfer ? 0 : -t.amountCents),
+          isTransfer
+              ? t.amountCents
+              : (isIncome ? t.amountCents : -t.amountCents),
           signed: !isTransfer,
           color: color,
           style: const TextStyle(fontWeight: FontWeight.w600),
@@ -418,11 +421,19 @@ class _BatchBar extends ConsumerWidget {
       ),
     );
     if (ok != true) return;
-    await ref
-        .read(webClientProvider)!
-        .batchTransactions('delete', selected.toList());
-    bumpWebRefresh(ref);
-    onDone();
+    try {
+      await ref
+          .read(webClientProvider)!
+          .batchTransactions('delete', selected.toList());
+      bumpWebRefresh(ref);
+      onDone();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo borrar: $e')),
+        );
+      }
+    }
   }
 }
 

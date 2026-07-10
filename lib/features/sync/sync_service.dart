@@ -191,6 +191,7 @@ class SyncServerController extends StateNotifier<SyncServerState> {
   @override
   void dispose() {
     _server?.stop();
+    stopSyncForegroundService();
     super.dispose();
   }
 }

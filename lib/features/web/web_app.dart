@@ -68,9 +68,10 @@ class _WebAppState extends ConsumerState<WebApp> {
         enumByName(ThemeMode.values, settings.themeMode, ThemeMode.system);
     final seed = Color(settings.seedColorValue);
     final light = AppTheme.light(ColorScheme.fromSeed(seedColor: seed));
+    final amoled = ref.watch(webAmoledOverrideProvider) ?? settings.amoled;
     final dark = AppTheme.dark(
       ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
-      amoled: settings.amoled,
+      amoled: amoled,
     );
 
     const title = 'Finanzas · Escritorio';

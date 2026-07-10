@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/enums.dart';
 import 'web_api_client.dart';
 import 'web_models.dart';
+import 'web_session.dart';
 
 /// Cliente conectado (null hasta emparejar en la pantalla de conexión).
 final webClientProvider = StateProvider<WebApiClient?>((ref) => null);
@@ -25,6 +26,13 @@ final webHideAmountsProvider = StateProvider<bool>((ref) => false);
 /// Override local del tema desde la barra superior. `null` = seguir el tema de
 /// los ajustes del móvil (`SettingsDto.themeMode`).
 final webThemeModeOverrideProvider = StateProvider<ThemeMode?>((ref) => null);
+
+/// Override **local del navegador** del modo AMOLED (persistido en `localStorage`
+/// vía [WebSession.amoled]). `null` = seguir el ajuste del móvil
+/// (`SettingsDto.amoled`). Es local para que cambiar el OLED en la web no altere
+/// el tema del móvil.
+final webAmoledOverrideProvider =
+    StateProvider<bool?>((ref) => WebSession.amoled);
 
 // ---------------------------------------------------------------------------
 // Estado del filtro de movimientos

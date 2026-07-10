@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
@@ -13,7 +12,6 @@ import '../../data/repositories/recurring_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../shared/widgets/icon_color_picker.dart';
 import '../security/app_lock_service.dart';
-import '../sync/net/sync_protocol.dart';
 import '../sync/sync_service.dart';
 import 'goals_screen.dart';
 
@@ -344,7 +342,6 @@ class _WebappSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isAdmin = ref.watch(currentSettingsProvider).syncIsAdmin;
-    final server = ref.watch(syncServerControllerProvider);
 
     if (!isAdmin) {
       return const ListTile(
@@ -355,53 +352,16 @@ class _WebappSection extends ConsumerWidget {
       );
     }
 
-    if (!server.running) {
-      return ListTile(
-        leading: const Icon(Icons.desktop_windows_outlined),
-        title: const Text('Activa el servidor para usarla'),
-        subtitle: const Text(
-            'Usa Finanzas desde el navegador de tu ordenador, en la misma Wi-Fi.'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => context.push(Routes.sync),
-      );
-    }
-
-    final port = server.port ?? SyncProtocol.defaultPort;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child:
-              Text('Ábrelo en el navegador de un ordenador en la misma Wi-Fi:'),
-        ),
-        if (server.ips.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text('No se detectó ninguna IP de red local.'),
-          )
-        else
-          for (final ip in server.ips)
-            ListTile(
-              leading: const Icon(Icons.desktop_windows_outlined),
-              title: Text('http://$ip:$port'),
-              trailing: IconButton(
-                icon: const Icon(Icons.copy),
-                tooltip: 'Copiar enlace',
-                onPressed: () => _copyLink(context, 'http://$ip:$port'),
-              ),
-            ),
-      ],
+    final server = ref.watch(syncServerControllerProvider);
+    return ListTile(
+      leading: const Icon(Icons.desktop_windows_outlined),
+      title: const Text('Webapp de escritorio'),
+      subtitle: Text(server.running
+          ? 'Activa: dirección, QR y tarjetas del panel'
+          : 'Úsala desde el navegador de tu ordenador'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => context.push(Routes.webapp),
     );
-  }
-
-  Future<void> _copyLink(BuildContext context, String link) async {
-    await Clipboard.setData(ClipboardData(text: link));
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enlace copiado.')),
-      );
-    }
   }
 }
 

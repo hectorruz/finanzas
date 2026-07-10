@@ -9,6 +9,7 @@ class WebSession {
   static const _kPort = 'finanzas.port';
   static const _kToken = 'finanzas.token';
   static const _kDeviceId = 'finanzas.deviceId';
+  static const _kAmoled = 'finanzas.amoled';
 
   static web.Storage get _store => web.window.localStorage;
 
@@ -16,6 +17,22 @@ class WebSession {
   static int? get port => int.tryParse(_store.getItem(_kPort) ?? '');
   static String? get token => _store.getItem(_kToken);
   static String? get deviceId => _store.getItem(_kDeviceId);
+
+  /// Override **local del navegador** del modo AMOLED (negro puro en oscuro).
+  /// `null` = seguir el ajuste del móvil (`SettingsDto.amoled`). Es local para no
+  /// pisar el tema del móvil al cambiarlo desde la web.
+  static bool? get amoled {
+    final v = _store.getItem(_kAmoled);
+    return v == null ? null : v == 'true';
+  }
+
+  static set amoled(bool? v) {
+    if (v == null) {
+      _store.removeItem(_kAmoled);
+    } else {
+      _store.setItem(_kAmoled, '$v');
+    }
+  }
 
   static bool get hasSession =>
       (host?.isNotEmpty ?? false) && (token?.isNotEmpty ?? false);

@@ -133,9 +133,20 @@ class _WebMovementFormState extends ConsumerState<WebMovementForm> {
       ),
     );
     if (ok != true) return;
-    await ref.read(webClientProvider)!.deleteTransaction(id);
-    bumpWebRefresh(ref);
-    widget.onDone?.call();
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(webClientProvider)!.deleteTransaction(id);
+      bumpWebRefresh(ref);
+      widget.onDone?.call();
+    } catch (e) {
+      setState(() {
+        _busy = false;
+        _error = '$e';
+      });
+    }
   }
 
   @override
