@@ -10,19 +10,20 @@ import 'package:finanzas/data/models/enums.dart';
 
 void main() {
   group('AppSettings módulos', () {
+    // El módulo de objetivos está SIEMPRE disponible (se muestra u oculta
+    // añadiéndolo o quitándolo de la barra inferior, no con un interruptor
+    // propio): `goalsEnabled` es true con independencia de `enabledModules`.
     test('por defecto: Objetivos activo', () {
-      final settings = AppSettings();
+      expect(AppSettings().goalsEnabled, isTrue);
+    });
+
+    test('Objetivos sigue activo aunque enabledModules esté vacío', () {
+      final settings = AppSettings()..enabledModules = [];
       expect(settings.goalsEnabled, isTrue);
     });
 
-    test('desactivar Objetivos lo refleja en el getter', () {
-      final settings = AppSettings()..enabledModules = [];
-      expect(settings.goalsEnabled, isFalse);
-    });
-
-    test('activar Objetivos lo refleja en el getter', () {
-      final settings = AppSettings()
-        ..enabledModules = [AppModule.goals.name];
+    test('Objetivos activo con el módulo presente', () {
+      final settings = AppSettings()..enabledModules = [AppModule.goals.name];
       expect(settings.goalsEnabled, isTrue);
     });
   });
