@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../data/models/enums.dart';
+import '../analytics/recurring_timeline.dart';
 import '../analytics/web_analytics.dart';
+import '../web_dashboard_cards.dart';
 import '../web_models.dart';
 import '../web_providers.dart';
 import '../web_router.dart';
@@ -14,8 +16,9 @@ import '../widgets/web_pickers.dart';
 import '../widgets/web_ui.dart';
 
 /// Panel principal: KPIs, gráficas interactivas (recalculadas en cliente),
-/// objetivos, cuentas y últimos movimientos. Respeta el modo privacidad y el
-/// orden/selección de tarjetas de los ajustes del móvil (`dashboardCards`).
+/// objetivos, cuentas y últimos movimientos. Qué tarjetas se muestran y en qué
+/// orden lo decide `AppSettings.webDashboardCards` (independiente del inicio del
+/// móvil; ver `web_dashboard_cards.dart`). Respeta el modo privacidad.
 class WebDashboardPage extends ConsumerWidget {
   const WebDashboardPage({super.key});
 
@@ -26,11 +29,16 @@ class WebDashboardPage extends ConsumerWidget {
     final categories = ref.watch(webCategoriesByIdProvider);
     final accountsById = ref.watch(webAccountsByIdProvider);
     final goals = ref.watch(webGoalsProvider).valueOrNull ?? const [];
+    final recurring = ref.watch(webRecurringProvider).valueOrNull ?? const [];
     final settings = ref.watch(webSettingsProvider).valueOrNull ?? SettingsDto();
     final hide = ref.watch(webHideAmountsProvider);
 
-    final cards = settings.dashboardCards;
-    bool show(String card) => cards.isEmpty || cards.contains(card);
+    final rawKeys = settings.webDashboardCards.isEmpty
+        ? kDefaultWebDashboard
+        : settings.webDashboardCards;
+    final keys = rawKeys.where((k) => webCardByKey(k) != null).toList();
+    final kpiKeys = keys.where(webCardIsKpi).toList();
+    final blockKeys = keys.where((k) => !webCardIsKpi(k)).toList();
 
     final total = accounts
         .where((a) => a.includeInTotal && !a.archived)
@@ -72,132 +80,137 @@ class WebDashboardPage extends ConsumerWidget {
           final evolution =
               balanceEvolution(txns, currentTotalCents: total, days: 90, now: now);
           final recent = [...txns]..sort((a, b) => b.date.compareTo(a.date));
+          final upcoming = upcomingTimeline(recurring,
+              from: now, to: now.add(const Duration(days: 30)));
+          final savingsRate = income == 0 ? null : (income - expense) / income;
 
           return LayoutBuilder(builder: (context, constraints) {
-            final wide = constraints.maxWidth >= 900;
-            final kpiCols = constraints.maxWidth >= 900
+            final scheme = Theme.of(context).colorScheme;
+            final baseCols = constraints.maxWidth >= 900
                 ? 4
                 : constraints.maxWidth >= 520
                     ? 2
                     : 1;
+            final kpiCols = kpiKeys.isEmpty
+                ? 1
+                : (kpiKeys.length < baseCols ? kpiKeys.length : baseCols);
+
+            Widget kpiFor(String key) {
+              switch (key) {
+                case 'kpiTotalBalance':
+                  return WebKpiCard(
+                    label: 'Balance total',
+                    icon: Icons.account_balance_wallet_outlined,
+                    value: WebMoneyText(total),
+                  );
+                case 'kpiIncome':
+                  return WebKpiCard(
+                    label: 'Ingresos (mes)',
+                    icon: Icons.south_west,
+                    valueColor: Colors.green,
+                    value: WebMoneyText(income),
+                  );
+                case 'kpiExpense':
+                  return WebKpiCard(
+                    label: 'Gastos (mes)',
+                    icon: Icons.north_east,
+                    valueColor: scheme.error,
+                    trailing: expenseChange == null
+                        ? null
+                        : _DeltaChip(change: expenseChange),
+                    value: WebMoneyText(expense),
+                  );
+                case 'kpiSavings':
+                  return WebKpiCard(
+                    label: 'Ahorro (mes)',
+                    icon: Icons.savings_outlined,
+                    valueColor:
+                        (income - expense) >= 0 ? Colors.green : scheme.error,
+                    value: WebMoneyText(income - expense, signed: true),
+                  );
+                case 'kpiSavingsRate':
+                  return WebKpiCard(
+                    label: 'Tasa de ahorro',
+                    icon: Icons.percent,
+                    valueColor: (savingsRate ?? 0) >= 0
+                        ? Colors.green
+                        : scheme.error,
+                    value: Text(savingsRate == null
+                        ? '—'
+                        : '${(savingsRate * 100).round()}%'),
+                  );
+                default:
+                  return const SizedBox.shrink();
+              }
+            }
+
+            // Devuelve null para omitir la tarjeta (p. ej. objetivos sin datos),
+            // así no queda un hueco de separación vacío.
+            Widget? blockFor(String key) {
+              switch (key) {
+                case 'categoryDonut':
+                  return _ChartCard(
+                    title: 'Gasto por categoría (mes)',
+                    child: WebDonutChart(slices: breakdown, hideAmounts: hide),
+                  );
+                case 'incomeExpenseBars':
+                  return _ChartCard(
+                    title: 'Ingresos vs. gastos',
+                    child: WebIncomeExpenseBars(
+                        buckets: buckets, hideAmounts: hide),
+                  );
+                case 'balanceLine':
+                  return _ChartCard(
+                    title: 'Evolución del balance (90 días)',
+                    child: WebBalanceLine(points: evolution, hideAmounts: hide),
+                  );
+                case 'topCategories':
+                  return _TopCategoriesCard(slices: breakdown);
+                case 'upcomingRecurring':
+                  return _UpcomingRecurringCard(
+                      occurrences: upcoming, accounts: accountsById);
+                case 'recentMovements':
+                  return _RecentCard(
+                    recent: recent,
+                    categories: categories,
+                    accounts: accountsById,
+                  );
+                case 'goals':
+                  return goals.isEmpty ? null : _GoalsCard(goals: goals);
+                case 'accounts':
+                  return _AccountsCard(accounts: accounts);
+                default:
+                  return null;
+              }
+            }
+
+            final blocks = [
+              for (final k in blockKeys)
+                if (blockFor(k) case final w?) w,
+            ];
+
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                GridView.count(
-                  crossAxisCount: kpiCols,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 2.3,
-                  children: [
-                    WebKpiCard(
-                      label: 'Balance total',
-                      icon: Icons.account_balance_wallet_outlined,
-                      value: WebMoneyText(total),
-                    ),
-                    WebKpiCard(
-                      label: 'Ingresos (mes)',
-                      icon: Icons.south_west,
-                      valueColor: Colors.green,
-                      value: WebMoneyText(income),
-                    ),
-                    WebKpiCard(
-                      label: 'Gastos (mes)',
-                      icon: Icons.north_east,
-                      valueColor: Theme.of(context).colorScheme.error,
-                      trailing: expenseChange == null
-                          ? null
-                          : _DeltaChip(change: expenseChange),
-                      value: WebMoneyText(expense),
-                    ),
-                    WebKpiCard(
-                      label: 'Ahorro (mes)',
-                      icon: Icons.savings_outlined,
-                      valueColor: (income - expense) >= 0
-                          ? Colors.green
-                          : Theme.of(context).colorScheme.error,
-                      value: WebMoneyText(income - expense, signed: true),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                // Gráficas: donut + barras.
-                if (show('monthComparison'))
-                  _ResponsiveRow(
-                    wide: wide,
-                    left: _ChartCard(
-                      title: 'Gasto por categoría (mes)',
-                      child: WebDonutChart(slices: breakdown, hideAmounts: hide),
-                    ),
-                    right: _ChartCard(
-                      title: 'Ingresos vs. gastos',
-                      child:
-                          WebIncomeExpenseBars(buckets: buckets, hideAmounts: hide),
-                    ),
+                if (kpiKeys.isNotEmpty)
+                  GridView.count(
+                    crossAxisCount: kpiCols,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 2.3,
+                    children: [for (final k in kpiKeys) kpiFor(k)],
                   ),
-                const SizedBox(height: 16),
-                _ChartCard(
-                  title: 'Evolución del balance (90 días)',
-                  child: WebBalanceLine(points: evolution, hideAmounts: hide),
-                ),
-                const SizedBox(height: 16),
-                _ResponsiveRow(
-                  wide: wide,
-                  left: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (show('recentMovements'))
-                        _RecentCard(
-                          recent: recent,
-                          categories: categories,
-                          accounts: accountsById,
-                        ),
-                    ],
-                  ),
-                  right: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (show('goals') && goals.isNotEmpty) ...[
-                        _GoalsCard(goals: goals),
-                        const SizedBox(height: 16),
-                      ],
-                      if (show('totalBalance') || show('accountsBalance'))
-                        _AccountsCard(accounts: accounts),
-                    ],
-                  ),
-                ),
+                for (final w in blocks) ...[
+                  const SizedBox(height: 16),
+                  w,
+                ],
               ],
             );
           });
         },
       ),
-    );
-  }
-}
-
-class _ResponsiveRow extends StatelessWidget {
-  const _ResponsiveRow({
-    required this.wide,
-    required this.left,
-    required this.right,
-  });
-  final bool wide;
-  final Widget left;
-  final Widget right;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!wide) {
-      return Column(children: [left, const SizedBox(height: 16), right]);
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: left),
-        const SizedBox(width: 16),
-        Expanded(child: right),
-      ],
     );
   }
 }
@@ -316,6 +329,121 @@ class _RecentCard extends StatelessWidget {
         signed: !isTransfer,
         color: color,
         style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+class _TopCategoriesCard extends StatelessWidget {
+  const _TopCategoriesCard({required this.slices});
+  final List<CategorySlice> slices;
+
+  @override
+  Widget build(BuildContext context) {
+    final top = [...slices]
+      ..sort((a, b) => b.totalCents.compareTo(a.totalCents));
+    final shown = top.take(6).toList();
+    final maxCents = shown.isEmpty ? 0 : shown.first.totalCents;
+    return WebCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Top categorías de gasto (mes)',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          if (shown.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: Text('Sin gastos este mes.')),
+            )
+          else
+            for (final s in shown)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                            child: Text(s.label,
+                                overflow: TextOverflow.ellipsis)),
+                        const SizedBox(width: 8),
+                        WebMoneyText(s.totalCents,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: maxCents == 0 ? 0 : s.totalCents / maxCents,
+                        minHeight: 6,
+                        color: Color(s.colorValue),
+                        backgroundColor:
+                            Theme.of(context).colorScheme.surfaceContainerHighest,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UpcomingRecurringCard extends StatelessWidget {
+  const _UpcomingRecurringCard({
+    required this.occurrences,
+    required this.accounts,
+  });
+  final List<RecurringOccurrence> occurrences;
+  final Map<int, AccountDto> accounts;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final shown = occurrences.take(8).toList();
+    return WebCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Próximos recurrentes (30 días)',
+              style: Theme.of(context).textTheme.titleMedium),
+          if (shown.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: Text('Sin cargos próximos.')),
+            )
+          else
+            for (final o in shown)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: WebColorDot(
+                  colorValue: o.rule.type == TransactionType.income
+                      ? 0xFF4CAF50
+                      : 0xFFF44336,
+                  icon: o.rule.type == TransactionType.income
+                      ? Icons.south_west
+                      : Icons.north_east,
+                ),
+                title: Text(
+                    o.rule.concept.isEmpty ? o.rule.name : o.rule.concept),
+                subtitle: Text('${DateFormat('dd/MM/yyyy').format(o.date)} · '
+                    '${accounts[o.rule.accountId]?.name ?? '—'}'),
+                trailing: WebMoneyText(
+                  o.signedCents,
+                  signed: true,
+                  color: o.rule.type == TransactionType.income
+                      ? Colors.green
+                      : scheme.error,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+        ],
       ),
     );
   }

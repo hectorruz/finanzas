@@ -12,6 +12,16 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 const _channelId = 'finanzas_sync_server';
 const _title = 'Servidor de sincronización activo';
 
+/// Id del botón "Detener servidor" de la notificación persistente.
+const kSyncStopButtonId = 'stop_server';
+
+/// Señales que el isolate del servicio envía al isolate principal
+/// (`sendDataToMain`) porque los callbacks de la notificación corren en el
+/// isolate del servicio, sin acceso a Riverpod ni al `HttpServer`. El principal
+/// las recibe con `addTaskDataCallback` (ver `app.dart`).
+const kSyncStopSignal = 'stop_server';
+const kSyncOpenSettingsSignal = 'open_server_settings';
+
 /// Inicializa el plugin (idempotente). Se llama antes de arrancar el servicio.
 void initSyncForegroundTask() {
   FlutterForegroundTask.init(
@@ -37,16 +47,23 @@ void initSyncForegroundTask() {
 Future<void> startSyncForegroundService({required String address}) async {
   try {
     initSyncForegroundTask();
+    // El botón se pasa igual en start y en update (si no, se perdería al
+    // actualizar el texto de la dirección).
+    const buttons = [
+      NotificationButton(id: kSyncStopButtonId, text: 'Detener servidor'),
+    ];
     if (await FlutterForegroundTask.isRunningService) {
       await FlutterForegroundTask.updateService(
         notificationTitle: _title,
         notificationText: address,
+        notificationButtons: buttons,
       );
       return;
     }
     await FlutterForegroundTask.startService(
       notificationTitle: _title,
       notificationText: address,
+      notificationButtons: buttons,
       callback: startSyncForegroundCallback,
     );
   } catch (_) {
@@ -81,4 +98,19 @@ class _SyncTaskHandler extends TaskHandler {
 
   @override
   Future<void> onDestroy(DateTime timestamp) async {}
+
+  /// Toque en el cuerpo de la notificación → el toque ya trae la app al frente
+  /// (content-intent del plugin); aquí solo pedimos al principal que navegue a
+  /// los ajustes del servidor.
+  @override
+  void onNotificationPressed() {
+    FlutterForegroundTask.sendDataToMain(kSyncOpenSettingsSignal);
+  }
+
+  @override
+  void onNotificationButtonPressed(String id) {
+    if (id == kSyncStopButtonId) {
+      FlutterForegroundTask.sendDataToMain(kSyncStopSignal);
+    }
+  }
 }

@@ -203,6 +203,7 @@ class ApiSerializer {
         'amoled': s.amoled,
         'seedColorValue': s.seedColorValue,
         'dashboardCards': s.dashboardCards,
+        'webDashboardCards': s.webDashboardCards,
         'totalBalanceAccountIds': s.totalBalanceAccountIds,
         'accountsCardIds': s.accountsCardIds,
         'balanceSubtotals': s.balanceSubtotals,
@@ -220,6 +221,9 @@ class ApiSerializer {
     }
     if (m.containsKey('dashboardCards')) {
       t.dashboardCards = _strings(m['dashboardCards']);
+    }
+    if (m.containsKey('webDashboardCards')) {
+      t.webDashboardCards = _strings(m['webDashboardCards']);
     }
     if (m.containsKey('totalBalanceAccountIds')) {
       t.totalBalanceAccountIds = _intList(m['totalBalanceAccountIds']);

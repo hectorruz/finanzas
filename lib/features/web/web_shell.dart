@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'web_movement_dialog.dart';
 import 'web_providers.dart';
 import 'web_router.dart';
 import 'web_session.dart';
@@ -30,6 +31,15 @@ class WebShell extends ConsumerWidget {
                 ),
               )
             : null,
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => showDialog<void>(
+            context: context,
+            builder: (_) => const WebMovementDialog(),
+          ),
+          icon: const Icon(Icons.add),
+          label: const Text('Nuevo'),
+          tooltip: 'Añadir movimiento',
+        ),
         body: Column(
           children: [
             _TopBar(showMenu: useDrawer),

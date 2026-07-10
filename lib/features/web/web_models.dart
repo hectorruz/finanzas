@@ -503,6 +503,7 @@ class SettingsDto {
     this.amoled = true,
     this.seedColorValue = 0xFF2196F3,
     this.dashboardCards = const [],
+    this.webDashboardCards = const [],
     this.totalBalanceAccountIds = const [],
     this.accountsCardIds = const [],
     this.balanceSubtotals = const [],
@@ -515,6 +516,7 @@ class SettingsDto {
   final bool amoled;
   final int seedColorValue;
   final List<String> dashboardCards;
+  final List<String> webDashboardCards;
   final List<int> totalBalanceAccountIds;
   final List<int> accountsCardIds;
   final List<String> balanceSubtotals;
@@ -527,6 +529,7 @@ class SettingsDto {
         amoled: m['amoled'] as bool? ?? true,
         seedColorValue: m['seedColorValue'] as int? ?? 0xFF2196F3,
         dashboardCards: _strs(m['dashboardCards']),
+        webDashboardCards: _strs(m['webDashboardCards']),
         totalBalanceAccountIds: _ints(m['totalBalanceAccountIds']),
         accountsCardIds: _ints(m['accountsCardIds']),
         balanceSubtotals: _strs(m['balanceSubtotals']),

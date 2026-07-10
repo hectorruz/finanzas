@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +13,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/settings_repository.dart';
 import 'features/security/app_lock_gate.dart';
+import 'features/sync/net/sync_foreground_service.dart';
 import 'features/sync/sync_service.dart';
 
 class FinanzasApp extends ConsumerStatefulWidget {
@@ -38,6 +40,11 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
     QuickTile.setActionHandler(_handleQuickAction);
     // Toque de una notificación con la app ya abierta (recordatorio de sync).
     onNotificationTap = _handleNotificationPayload;
+    // Señales del servicio en primer plano (botón "Detener servidor" / toque de
+    // la notificación persistente del servidor). Corren en otro isolate, así que
+    // el principal las recibe por este canal.
+    FlutterForegroundTask.initCommunicationPort();
+    FlutterForegroundTask.addTaskDataCallback(_onForegroundTaskData);
     // Arranque en frío: acción del tile o notificación que lanzó la app, una
     // vez montado el router. Y, si este dispositivo es el vinculado, un
     // intento silencioso de ponerse al día con el admin sin que el usuario
@@ -62,9 +69,20 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
 
   @override
   void dispose() {
+    FlutterForegroundTask.removeTaskDataCallback(_onForegroundTaskData);
     _connSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Señales que llegan desde el isolate del servicio en primer plano
+  /// (notificación persistente del servidor).
+  void _onForegroundTaskData(Object data) {
+    if (data == kSyncStopSignal) {
+      ref.read(syncServerControllerProvider.notifier).stop();
+    } else if (data == kSyncOpenSettingsSignal) {
+      ref.read(routerProvider).push(Routes.serverSettings);
+    }
   }
 
   @override

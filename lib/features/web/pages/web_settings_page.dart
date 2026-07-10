@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../web_dashboard_cards.dart';
 import '../web_providers.dart';
 import '../web_session.dart';
+import '../widgets/web_pickers.dart';
 import '../widgets/web_ui.dart';
 
 /// Ajustes de la webapp: tema, privacidad, tarjetas del panel e info del
@@ -10,14 +12,6 @@ import '../widgets/web_ui.dart';
 /// (mismo `AppSettings`), así que también afectan a la app.
 class WebSettingsPage extends ConsumerWidget {
   const WebSettingsPage({super.key});
-
-  static const _dashboardCards = <String, String>{
-    'totalBalance': 'Balance total',
-    'accountsBalance': 'Cuentas',
-    'monthComparison': 'Comparativa del mes y gráficas',
-    'recentMovements': 'Últimos movimientos',
-    'goals': 'Objetivos',
-  };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -39,8 +33,16 @@ class WebSettingsPage extends ConsumerWidget {
             bumpWebRefresh(ref);
           }
 
-          final cards = settings.dashboardCards;
-          bool cardOn(String c) => cards.isEmpty || cards.contains(c);
+          // Tarjetas del panel de la web (independiente del inicio del móvil).
+          final visibleCards = settings.webDashboardCards.isEmpty
+              ? kDefaultWebDashboard
+              : settings.webDashboardCards
+                  .where((k) => webCardByKey(k) != null)
+                  .toList();
+          final hiddenCards = kWebDashboardCatalog
+              .map((c) => c.key)
+              .where((k) => !visibleCards.contains(k))
+              .toList();
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -78,6 +80,29 @@ class WebSettingsPage extends ConsumerWidget {
                       value: settings.amoled,
                       onChanged: (v) => patch({'amoled': v}),
                     ),
+                    const SizedBox(height: 8),
+                    Text('Color de acento',
+                        style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Se aplica al tema de la webapp (y a la app cuando el color '
+                      'del sistema/Material You está desactivado).',
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.outline),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        for (final c in kWebColorPalette)
+                          _AccentSwatch(
+                            colorValue: c,
+                            selected: settings.seedColorValue == c,
+                            onTap: () => patch({'seedColorValue': c}),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -111,24 +136,64 @@ class WebSettingsPage extends ConsumerWidget {
                         style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 4),
                     Text(
-                      'Elige qué se muestra en el panel (afecta también a la app).',
+                      'Elige qué tarjetas se ven y en qué orden. Solo afecta al '
+                      'panel de la webapp (no al inicio del móvil). Arrastra para '
+                      'reordenar.',
                       style: TextStyle(
                           color: Theme.of(context).colorScheme.outline),
                     ),
                     const SizedBox(height: 8),
-                    for (final e in _dashboardCards.entries)
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(e.value),
-                        value: cardOn(e.key),
-                        onChanged: (v) {
-                          final next = <String>[
-                            for (final c in _dashboardCards.keys)
-                              if (c == e.key ? (v ?? false) : cardOn(c)) c,
-                          ];
-                          patch({'dashboardCards': next});
-                        },
+                    ReorderableListView(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      buildDefaultDragHandles: true,
+                      onReorder: (oldIndex, newIndex) {
+                        final list = [...visibleCards];
+                        if (newIndex > oldIndex) newIndex--;
+                        final item = list.removeAt(oldIndex);
+                        list.insert(newIndex, item);
+                        patch({'webDashboardCards': list});
+                      },
+                      children: [
+                        for (final key in visibleCards)
+                          ListTile(
+                            key: ValueKey(key),
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.drag_handle),
+                            title: Text(webCardLabel(key)),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.visibility_off),
+                              tooltip: 'Ocultar',
+                              onPressed: () => patch({
+                                'webDashboardCards': visibleCards
+                                    .where((k) => k != key)
+                                    .toList(),
+                              }),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (hiddenCards.isNotEmpty) ...[
+                      const Divider(),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, bottom: 4),
+                        child: Text('Ocultas',
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.outline)),
                       ),
+                      for (final key in hiddenCards)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(webCardLabel(key)),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.add_circle_outline),
+                            tooltip: 'Mostrar',
+                            onPressed: () => patch({
+                              'webDashboardCards': [...visibleCards, key],
+                            }),
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -165,6 +230,48 @@ class WebSettingsPage extends ConsumerWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// Muestra un color de la paleta como círculo seleccionable (check si activo).
+class _AccentSwatch extends StatelessWidget {
+  const _AccentSwatch({
+    required this.colorValue,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final int colorValue;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Color(colorValue);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: selected
+              ? Border.all(
+                  color: Theme.of(context).colorScheme.onSurface, width: 3)
+              : null,
+        ),
+        child: selected
+            ? Icon(Icons.check,
+                color: ThemeData.estimateBrightnessForColor(color) ==
+                        Brightness.dark
+                    ? Colors.white
+                    : Colors.black,
+                size: 20)
+            : null,
       ),
     );
   }

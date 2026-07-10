@@ -63,6 +63,13 @@ class AppSettings {
     DashboardCardType.scanReceipt.name,
   ];
 
+  /// Tarjetas del panel de la **webapp de escritorio**, en orden y solo las
+  /// visibles (por clave, ver `kWebDashboardCatalog`). Es independiente de
+  /// [dashboardCards] (que es el inicio del móvil): la web tiene más tipos de
+  /// tarjeta. Vacío = layout por defecto de la web. Viaja por la API `/api/settings`
+  /// pero el móvil no la usa para su propio inicio.
+  List<String> webDashboardCards = [];
+
   /// Ids de cuentas que cuentan para el balance total. Vacío = todas las que
   /// tengan `includeInTotal`.
   List<int> totalBalanceAccountIds = [];
