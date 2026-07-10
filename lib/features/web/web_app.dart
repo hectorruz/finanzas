@@ -1,29 +1,121 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/theme/app_theme.dart';
+import '../../data/models/enums.dart';
 import '../sync/net/sync_protocol.dart';
 import 'web_api_client.dart';
+import 'web_models.dart';
 import 'web_providers.dart';
-import 'web_shell.dart';
+import 'web_router.dart';
+import 'web_session.dart';
 
-/// App raíz de la webapp de escritorio. Muestra la pantalla de conexión hasta
-/// que se empareja con el móvil; después, el panel de escritorio.
-class WebApp extends ConsumerWidget {
+/// Router de la webapp, cacheado para no recrearlo en cada rebuild.
+final webRouterProvider = Provider<GoRouter>((ref) => buildWebRouter());
+
+/// App raíz de la webapp de escritorio. Reintenta reconectar desde la sesión
+/// guardada; si no hay o falla, muestra la pantalla de conexión. Una vez
+/// conectada, monta el panel de escritorio con URLs reales por sección.
+class WebApp extends ConsumerStatefulWidget {
   const WebApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WebApp> createState() => _WebAppState();
+}
+
+class _WebAppState extends ConsumerState<WebApp> {
+  bool _restoring = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _restore();
+  }
+
+  Future<void> _restore() async {
+    if (!WebSession.hasSession) {
+      setState(() => _restoring = false);
+      return;
+    }
+    final client = WebApiClient(
+      baseUri: Uri(
+        scheme: 'http',
+        host: WebSession.host!,
+        port: WebSession.port ?? SyncProtocol.defaultPort,
+      ),
+      token: WebSession.token,
+    );
+    try {
+      await client.getSettings(); // valida el token guardado
+      ref.read(webClientProvider.notifier).state = client;
+    } catch (_) {
+      WebSession.clear();
+      client.close();
+    } finally {
+      if (mounted) setState(() => _restoring = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final connected = ref.watch(webClientProvider) != null;
-    final scheme = ColorScheme.fromSeed(seedColor: const Color(0xFF2196F3));
-    final darkScheme = ColorScheme.fromSeed(
-        seedColor: const Color(0xFF2196F3), brightness: Brightness.dark);
+    final settings = ref.watch(webSettingsProvider).valueOrNull ?? SettingsDto();
+    final override = ref.watch(webThemeModeOverrideProvider);
+    final themeMode = override ??
+        enumByName(ThemeMode.values, settings.themeMode, ThemeMode.system);
+    final seed = Color(settings.seedColorValue);
+    final light = AppTheme.light(ColorScheme.fromSeed(seedColor: seed));
+    final dark = AppTheme.dark(
+      ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
+      amoled: settings.amoled,
+    );
+
+    const title = 'Finanzas · Escritorio';
+    const locales = [Locale('es', 'ES'), Locale('en')];
+    const delegates = <LocalizationsDelegate<dynamic>>[
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ];
+
+    if (_restoring) {
+      return MaterialApp(
+        title: title,
+        debugShowCheckedModeBanner: false,
+        theme: light,
+        darkTheme: dark,
+        themeMode: themeMode,
+        home: const Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    if (connected) {
+      return MaterialApp.router(
+        title: title,
+        debugShowCheckedModeBanner: false,
+        theme: light,
+        darkTheme: dark,
+        themeMode: themeMode,
+        locale: const Locale('es', 'ES'),
+        supportedLocales: locales,
+        localizationsDelegates: delegates,
+        routerConfig: ref.watch(webRouterProvider),
+      );
+    }
+
     return MaterialApp(
-      title: 'Finanzas · Escritorio',
+      title: title,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorScheme: scheme, useMaterial3: true),
-      darkTheme: ThemeData(colorScheme: darkScheme, useMaterial3: true),
-      home: connected ? const WebShell() : const WebConnectScreen(),
+      theme: light,
+      darkTheme: dark,
+      themeMode: themeMode,
+      locale: const Locale('es', 'ES'),
+      supportedLocales: locales,
+      localizationsDelegates: delegates,
+      home: const WebConnectScreen(),
     );
   }
 }
@@ -46,9 +138,10 @@ class _WebConnectScreenState extends ConsumerState<WebConnectScreen> {
     super.initState();
     // Si la webapp la sirve el propio móvil, el origen ya es su IP:puerto.
     final base = Uri.base;
-    _host = TextEditingController(text: base.host.isEmpty ? '' : base.host);
+    _host = TextEditingController(
+        text: WebSession.host ?? (base.host.isEmpty ? '' : base.host));
     _port = TextEditingController(
-        text: base.hasPort ? '${base.port}' : '${SyncProtocol.defaultPort}');
+        text: '${WebSession.port ?? (base.hasPort ? base.port : SyncProtocol.defaultPort)}');
   }
 
   @override
@@ -64,18 +157,22 @@ class _WebConnectScreenState extends ConsumerState<WebConnectScreen> {
       _busy = true;
       _error = null;
     });
+    final host = _host.text.trim();
     final port = int.tryParse(_port.text.trim()) ?? SyncProtocol.defaultPort;
-    final client = WebApiClient(
-      baseUri: Uri(scheme: 'http', host: _host.text.trim(), port: port),
-    );
+    final deviceId = WebSession.deviceId ?? const Uuid().v4();
+    final client =
+        WebApiClient(baseUri: Uri(scheme: 'http', host: host, port: port));
     try {
-      await client.pair(
+      final token = await client.pair(
         pin: _pin.text.trim(),
-        deviceId: const Uuid().v4(),
+        deviceId: deviceId,
         displayName: 'Navegador (PC)',
       );
+      WebSession.save(
+          host: host, port: port, token: token, deviceId: deviceId);
       ref.read(webClientProvider.notifier).state = client;
     } catch (e) {
+      client.close();
       setState(() => _error = 'No se pudo conectar: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -104,16 +201,15 @@ class _WebConnectScreenState extends ConsumerState<WebConnectScreen> {
                       style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 4),
                   Text(
-                    'Activa el servidor Wi-Fi en la app del móvil e introduce sus '
-                    'datos. Ambos en la misma red.',
+                    'Activa el servidor Wi-Fi en la app del móvil e introduce su '
+                    'PIN. Ambos en la misma red.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 20),
                   TextField(
                     controller: _host,
-                    decoration: const InputDecoration(
-                        labelText: 'IP del móvil', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(labelText: 'IP del móvil'),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -121,17 +217,16 @@ class _WebConnectScreenState extends ConsumerState<WebConnectScreen> {
                       Expanded(
                         child: TextField(
                           controller: _port,
-                          decoration: const InputDecoration(
-                              labelText: 'Puerto',
-                              border: OutlineInputBorder()),
+                          decoration:
+                              const InputDecoration(labelText: 'Puerto'),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: TextField(
                           controller: _pin,
-                          decoration: const InputDecoration(
-                              labelText: 'PIN', border: OutlineInputBorder()),
+                          onSubmitted: (_) => _busy ? null : _connect(),
+                          decoration: const InputDecoration(labelText: 'PIN'),
                         ),
                       ),
                     ],

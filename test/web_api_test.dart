@@ -85,6 +85,120 @@ void main() {
     c.close();
   });
 
+  test('CRUD de cuentas y categorías vía API (sellado + soft-delete)', () async {
+    final c = client();
+    await c.pair(pin: '424242', deviceId: 'pc', displayName: 'PC');
+
+    final newAccId =
+        await c.createAccount(AccountDto(name: 'Efectivo', type: AccountType.cash));
+    expect(await c.accounts(), hasLength(2));
+    expect((await db.accounts.get(newAccId))!.uuid, isNotEmpty);
+
+    await c.updateAccount(
+        newAccId, AccountDto(name: 'Cash', type: AccountType.cash));
+    final updated = (await c.accounts()).firstWhere((a) => a.id == newAccId);
+    expect(updated.name, 'Cash');
+
+    await c.deleteAccount(newAccId);
+    expect((await db.accounts.get(newAccId))!.deletedAt, isNotNull);
+
+    final catId = await c.createCategory(
+        CategoryDto(name: 'Ropa', kind: CategoryKind.expense));
+    expect((await c.categories()).any((x) => x.id == catId), isTrue);
+    await c.deleteCategory(catId);
+    expect((await c.categories()).any((x) => x.id == catId), isFalse);
+    c.close();
+  });
+
+  test('recurrentes, objetivos y ajustes vía API', () async {
+    final c = client();
+    await c.pair(pin: '424242', deviceId: 'pc', displayName: 'PC');
+
+    final rid = await c.createRecurring(RecurringDto(
+      name: 'Alquiler',
+      amountCents: 50000,
+      nextDate: DateTime(2030, 1, 1),
+      accountId: accountId,
+    ));
+    expect((await c.recurring()).single.name, 'Alquiler');
+    await c.deleteRecurring(rid);
+    expect(await c.recurring(), isEmpty);
+
+    final gid =
+        await c.createGoal(GoalDto(name: 'Viaje', targetCents: 100000));
+    expect((await c.goals()).single.name, 'Viaje');
+    await c.deleteGoal(gid);
+    expect(await c.goals(), isEmpty);
+
+    final before = await c.getSettings();
+    final after = await c.putSettings({'hideAmounts': !before.hideAmounts});
+    expect(after.hideAmounts, !before.hideAmounts);
+    c.close();
+  });
+
+  test('acciones masivas de movimientos', () async {
+    final c = client();
+    await c.pair(pin: '424242', deviceId: 'pc', displayName: 'PC');
+    final catId = (await c.categories()).single.id;
+
+    final id1 = await c.createTransaction(TransactionDto(
+      type: TransactionType.expense,
+      amountCents: 100,
+      concept: 'a',
+      date: DateTime(2026, 6, 1),
+      accountId: accountId,
+    ));
+    final id2 = await c.createTransaction(TransactionDto(
+      type: TransactionType.expense,
+      amountCents: 200,
+      concept: 'b',
+      date: DateTime(2026, 6, 2),
+      accountId: accountId,
+    ));
+
+    await c.batchTransactions('setCategory', [id1, id2], categoryId: catId);
+    expect((await c.transactions()).every((t) => t.categoryId == catId), isTrue);
+
+    await c.batchTransactions('delete', [id1, id2]);
+    expect(await c.transactions(), isEmpty);
+    c.close();
+  });
+
+  test('filtro de movimientos por tipo, importe y orden', () async {
+    final c = client();
+    await c.pair(pin: '424242', deviceId: 'pc', displayName: 'PC');
+
+    await c.createTransaction(TransactionDto(
+        type: TransactionType.expense,
+        amountCents: 100,
+        concept: 'barato',
+        date: DateTime(2026, 6, 1),
+        accountId: accountId));
+    await c.createTransaction(TransactionDto(
+        type: TransactionType.expense,
+        amountCents: 900,
+        concept: 'caro',
+        date: DateTime(2026, 6, 2),
+        accountId: accountId));
+    await c.createTransaction(TransactionDto(
+        type: TransactionType.income,
+        amountCents: 5000,
+        concept: 'nómina',
+        date: DateTime(2026, 6, 3),
+        accountId: accountId));
+
+    final soloGastos =
+        await c.transactions(types: {TransactionType.expense});
+    expect(soloGastos, hasLength(2));
+
+    final caros = await c.transactions(minCents: 500);
+    expect(caros.map((t) => t.concept), containsAll(['caro', 'nómina']));
+
+    final asc = await c.transactions(sort: WebTxSort.amountAsc);
+    expect(asc.first.amountCents, 100);
+    c.close();
+  });
+
   test('la API rechaza peticiones sin token válido', () async {
     final c = client(token: 'malo');
     expect(

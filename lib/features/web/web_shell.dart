@@ -1,267 +1,302 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../core/money/money.dart';
-import '../../data/models/enums.dart';
-import 'web_models.dart';
-import 'web_movement_dialog.dart';
 import 'web_providers.dart';
+import 'web_router.dart';
+import 'web_session.dart';
 
-/// Panel de escritorio: navegación lateral + páginas. Optimizado para pantallas
-/// anchas (tabla de movimientos, saldos por cuenta).
-class WebShell extends ConsumerStatefulWidget {
-  const WebShell({super.key});
+/// Chrome de escritorio: barra superior + barra lateral persistente + área de
+/// contenido. Responsive: barra lateral ancha con etiquetas, rail compacto de
+/// iconos, o cajón (drawer) según el ancho de la ventana.
+class WebShell extends ConsumerWidget {
+  const WebShell({super.key, required this.location, required this.child});
+
+  final String location;
+  final Widget child;
+
   @override
-  ConsumerState<WebShell> createState() => _WebShellState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final wide = constraints.maxWidth >= 1080;
+      final medium = constraints.maxWidth >= 760;
+      final useDrawer = !wide && !medium;
+
+      return Scaffold(
+        drawer: useDrawer
+            ? Drawer(
+                child: SafeArea(
+                  child: _Sidebar(location: location, expanded: true),
+                ),
+              )
+            : null,
+        body: Column(
+          children: [
+            _TopBar(showMenu: useDrawer),
+            const Divider(height: 1),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!useDrawer) ...[
+                    _Sidebar(location: location, expanded: wide),
+                    const VerticalDivider(width: 1),
+                  ],
+                  Expanded(child: child),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
 }
 
-class _WebShellState extends ConsumerState<WebShell> {
-  int _index = 0;
+class _TopBar extends ConsumerStatefulWidget {
+  const _TopBar({required this.showMenu});
+  final bool showMenu;
+
+  @override
+  ConsumerState<_TopBar> createState() => _TopBarState();
+}
+
+class _TopBarState extends ConsumerState<_TopBar> {
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _search(String value) {
+    ref.read(webTxFilterProvider.notifier).update((f) => f.copyWith(query: value));
+    if (GoRouterState.of(context).uri.path != WebRoutes.movements) {
+      context.go(WebRoutes.movements);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Row(
-        children: [
-          NavigationRail(
-            selectedIndex: _index,
-            onDestinationSelected: (i) => setState(() => _index = i),
-            labelType: NavigationRailLabelType.all,
-            leading: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Icon(Icons.account_balance_wallet, size: 28),
-            ),
-            trailing: Expanded(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: IconButton(
-                    tooltip: 'Desconectar',
-                    icon: const Icon(Icons.logout),
-                    onPressed: () =>
-                        ref.read(webClientProvider.notifier).state = null,
-                  ),
-                ),
-              ),
-            ),
-            destinations: const [
-              NavigationRailDestination(
-                  icon: Icon(Icons.swap_vert), label: Text('Movimientos')),
-              NavigationRailDestination(
-                  icon: Icon(Icons.account_balance), label: Text('Cuentas')),
-            ],
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: _index == 0 ? const _MovementsPage() : const _AccountsPage(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MovementsPage extends ConsumerWidget {
-  const _MovementsPage();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final txns = ref.watch(webTransactionsProvider);
-    final accounts = ref.watch(webAccountsByIdProvider);
-    final categories = ref.watch(webCategoriesByIdProvider);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Text('Movimientos',
-                  style: Theme.of(context).textTheme.headlineSmall),
-              const Spacer(),
-              SizedBox(
-                width: 240,
-                child: TextField(
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search),
-                    hintText: 'Buscar…',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (v) =>
-                      ref.read(webTxQueryProvider.notifier).state = v,
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: 'Refrescar',
-                icon: const Icon(Icons.refresh),
-                onPressed: () =>
-                    ref.read(webRefreshProvider.notifier).state++,
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text('Nuevo'),
-                onPressed: () => showDialog(
-                    context: context, builder: (_) => const WebMovementDialog()),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: txns.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Error: $e')),
-            data: (list) => list.isEmpty
-                ? const Center(child: Text('Sin movimientos.'))
-                : SingleChildScrollView(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        columns: const [
-                          DataColumn(label: Text('Fecha')),
-                          DataColumn(label: Text('Concepto')),
-                          DataColumn(label: Text('Categoría')),
-                          DataColumn(label: Text('Cuenta')),
-                          DataColumn(label: Text('Importe'), numeric: true),
-                          DataColumn(label: Text('')),
-                        ],
-                        rows: [
-                          for (final t in list)
-                            _row(context, ref, t, accounts, categories),
-                        ],
-                      ),
-                    ),
-                  ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  DataRow _row(
-    BuildContext context,
-    WidgetRef ref,
-    TransactionDto t,
-    Map<int, AccountDto> accounts,
-    Map<int, CategoryDto> categories,
-  ) {
     final scheme = Theme.of(context).colorScheme;
-    final isIncome = t.type == TransactionType.income;
-    final color = isIncome
-        ? Colors.green
-        : (t.type == TransactionType.transfer ? scheme.outline : scheme.error);
-    return DataRow(cells: [
-      DataCell(Text(DateFormat('dd/MM/yyyy').format(t.date))),
-      DataCell(Text(t.concept.isEmpty ? '—' : t.concept)),
-      DataCell(Text(categories[t.categoryId]?.name ?? '—')),
-      DataCell(Text(accounts[t.accountId]?.name ?? '—')),
-      DataCell(Text(
-        '${isIncome ? '+' : (t.type == TransactionType.transfer ? '' : '-')}'
-        '${Money(t.amountCents).format()}',
-        style: TextStyle(color: color, fontWeight: FontWeight.w600),
-      )),
-      DataCell(Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined, size: 18),
-            onPressed: () => showDialog(
-                context: context,
-                builder: (_) => WebMovementDialog(existing: t)),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: 18),
-            onPressed: () => _delete(context, ref, t),
-          ),
-        ],
-      )),
-    ]);
-  }
-
-  Future<void> _delete(BuildContext context, WidgetRef ref, TransactionDto t) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Borrar movimiento'),
-        content: Text('¿Borrar "${t.concept}"?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Borrar')),
-        ],
+    final hide = ref.watch(webHideAmountsProvider);
+    return Material(
+      color: scheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            if (widget.showMenu)
+              Builder(
+                builder: (context) => IconButton(
+                  icon: const Icon(Icons.menu),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+              ),
+            Icon(Icons.account_balance_wallet, color: scheme.primary),
+            const SizedBox(width: 10),
+            Text('Finanzas',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(width: 24),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      hintText: 'Buscar movimientos…  (pulsa /)',
+                      filled: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    onSubmitted: _search,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: hide ? 'Mostrar importes' : 'Ocultar importes',
+              icon: Icon(hide ? Icons.visibility_off : Icons.visibility),
+              onPressed: () => ref
+                  .read(webHideAmountsProvider.notifier)
+                  .update((v) => !v),
+            ),
+            _ThemeMenuButton(),
+            _OverflowMenu(),
+          ],
+        ),
       ),
     );
-    if (ok != true || t.id == null) return;
-    await ref.read(webClientProvider)!.deleteTransaction(t.id!);
-    ref.read(webRefreshProvider.notifier).state++;
   }
 }
 
-class _AccountsPage extends ConsumerWidget {
-  const _AccountsPage();
-
+class _ThemeMenuButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final accounts = ref.watch(webAccountsProvider);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text('Cuentas',
-              style: Theme.of(context).textTheme.headlineSmall),
+    final override = ref.watch(webThemeModeOverrideProvider);
+    final isDark = override == ThemeMode.dark ||
+        (override == null &&
+            Theme.of(context).brightness == Brightness.dark);
+    return IconButton(
+      tooltip: 'Cambiar tema',
+      icon: Icon(isDark ? Icons.dark_mode : Icons.light_mode),
+      onPressed: () => ref.read(webThemeModeOverrideProvider.notifier).state =
+          isDark ? ThemeMode.light : ThemeMode.dark,
+    );
+  }
+}
+
+class _OverflowMenu extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return PopupMenuButton<String>(
+      tooltip: 'Más',
+      icon: const Icon(Icons.more_vert),
+      onSelected: (value) {
+        if (value == 'disconnect') _disconnect(context, ref);
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'host',
+          enabled: false,
+          child: Text('Conectado a ${WebSession.host ?? '—'}'),
         ),
-        const Divider(height: 1),
-        Expanded(
-          child: accounts.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Error: $e')),
-            data: (list) {
-              final total = list
-                  .where((a) => a.includeInTotal)
-                  .fold<int>(0, (s, a) => s + a.balanceCents);
-              return ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Card(
-                    child: ListTile(
-                      title: const Text('Balance total'),
-                      trailing: Text(Money(total).format(),
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
-                              ?.copyWith(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  for (final a in list)
-                    Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Color(a.colorValue),
-                          child: const Icon(Icons.account_balance,
-                              color: Colors.white, size: 20),
-                        ),
-                        title: Text(a.name),
-                        subtitle: a.parentId != null ? const Text('Subcuenta') : null,
-                        trailing: Text(Money(a.balanceCents).format(),
-                            style: const TextStyle(fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                ],
-              );
-            },
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'disconnect',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.logout),
+            title: Text('Desconectar'),
           ),
         ),
       ],
     );
+  }
+
+  void _disconnect(BuildContext context, WidgetRef ref) {
+    WebSession.clear();
+    ref.read(webClientProvider)?.close();
+    ref.read(webClientProvider.notifier).state = null;
+  }
+}
+
+class _Sidebar extends ConsumerWidget {
+  const _Sidebar({required this.location, required this.expanded});
+
+  final String location;
+  final bool expanded;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final width = expanded ? 232.0 : 76.0;
+
+    // Agrupa las secciones por su `group`, conservando el orden.
+    final groups = <String, List<WebNavItem>>{};
+    for (final item in webNavItems) {
+      (groups[item.group] ??= []).add(item);
+    }
+
+    return Container(
+      width: width,
+      color: scheme.surface,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        children: [
+          for (final entry in groups.entries) ...[
+            if (expanded)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 12, 16, 6),
+                child: Text(
+                  entry.key.toUpperCase(),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: scheme.outline,
+                        letterSpacing: 0.8,
+                      ),
+                ),
+              )
+            else
+              const SizedBox(height: 12),
+            for (final item in entry.value)
+              _NavTile(
+                item: item,
+                expanded: expanded,
+                selected: location == item.route,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _NavTile extends StatelessWidget {
+  const _NavTile({
+    required this.item,
+    required this.expanded,
+    required this.selected,
+  });
+
+  final WebNavItem item;
+  final bool expanded;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fg = selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant;
+
+    void go() {
+      if (Scaffold.maybeOf(context)?.hasDrawer ?? false) {
+        Navigator.maybePop(context); // cerrar el drawer en móvil/estrecho
+      }
+      context.go(item.route);
+    }
+
+    final tile = Padding(
+      padding: EdgeInsets.symmetric(horizontal: expanded ? 12 : 10, vertical: 3),
+      child: Material(
+        color: selected ? scheme.secondaryContainer : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: go,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+                horizontal: expanded ? 14 : 0, vertical: 12),
+            child: expanded
+                ? Row(
+                    children: [
+                      Icon(item.icon, size: 22, color: fg),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(item.label,
+                            style: TextStyle(
+                                color: fg,
+                                fontWeight: selected
+                                    ? FontWeight.w600
+                                    : FontWeight.w400)),
+                      ),
+                    ],
+                  )
+                : Center(child: Icon(item.icon, size: 24, color: fg)),
+          ),
+        ),
+      ),
+    );
+
+    return expanded ? tile : Tooltip(message: item.label, child: tile);
   }
 }

@@ -35,6 +35,23 @@ Future<String> persistReceiptImage(String pickedPath) async {
   }
 }
 
+/// Guarda [bytes] (una foto subida desde la webapp de escritorio) en
+/// `<documentos>/receipts/` con un nombre único y devuelve la ruta persistente.
+/// La copia en `receipts/` es la fuente de verdad del móvil.
+Future<String> persistReceiptImageBytes(List<int> bytes,
+    {String extension = '.jpg'}) async {
+  final docs = await getApplicationDocumentsDirectory();
+  final dir =
+      Directory('${docs.path}${Platform.pathSeparator}$_receiptsDirName');
+  if (!await dir.exists()) {
+    await dir.create(recursive: true);
+  }
+  final name = 'receipt_${DateTime.now().millisecondsSinceEpoch}$extension';
+  final dest = '${dir.path}${Platform.pathSeparator}$name';
+  await File(dest).writeAsBytes(bytes);
+  return dest;
+}
+
 /// Nombre del álbum de la galería del dispositivo donde se copian las fotos de
 /// los tickets, para poder verlas desde la app de Galería/Fotos del móvil.
 const receiptsGalleryAlbum = 'Finanzas';

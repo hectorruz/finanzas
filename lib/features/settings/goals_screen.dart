@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/money/money.dart';
+import '../../core/planning/goal_planning.dart';
 import '../../data/models/goal.dart';
 import '../../data/repositories/goal_repository.dart';
 import '../../shared/widgets/amount_field.dart';
@@ -86,20 +87,14 @@ class GoalsScreen extends ConsumerWidget {
 }
 
 /// Texto de planificación para mostrar bajo el progreso (lista y dashboard).
-String? goalPlanLabel(Goal g) {
-  if (g.remainingCents <= 0) return '¡Objetivo conseguido!';
-  if (g.planMode == 'contribution') {
-    final months = g.monthsToTarget;
-    final date = g.projectedDate;
-    if (months == null || date == null) return null;
-    final when = DateFormat('MMM yyyy', 'es').format(date);
-    return 'Lo alcanzas en ~$months ${months == 1 ? 'mes' : 'meses'} ($when)';
-  } else {
-    final monthly = g.requiredMonthlyCents;
-    if (monthly == null) return null;
-    return 'Necesitas ${Money(monthly).format()}/mes';
-  }
-}
+/// Delega en la lógica pura de `core/planning/goal_planning.dart`.
+String? goalPlanLabel(Goal g) => goalPlanLabelFor(
+      currentCents: g.currentCents,
+      targetCents: g.targetCents,
+      planMode: g.planMode,
+      monthlyContributionCents: g.monthlyContributionCents,
+      deadline: g.deadline,
+    );
 
 class _GoalEditor extends ConsumerStatefulWidget {
   const _GoalEditor({this.goal});

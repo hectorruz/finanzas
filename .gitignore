@@ -30,6 +30,9 @@ android/app/google-services.json
 **/*.keystore
 **/*.jks
 
+# Web (plataforma generada por `flutter create --platforms=web`, no versionada)
+/web/
+
 # iOS / macOS (por si se añaden plataformas)
 ios/Pods/
 ios/.symlinks/

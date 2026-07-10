@@ -1,5 +1,6 @@
 import 'package:isar_community/isar.dart';
 
+import '../../core/planning/goal_planning.dart';
 import '../../core/sync/syncable.dart';
 
 part 'goal.g.dart';
@@ -43,45 +44,40 @@ class Goal implements Syncable {
 
   Goal();
 
+  // La matemática de planificación vive en `core/planning/goal_planning.dart`
+  // (pura, sin Isar) para compartirla con el `GoalDto` de la webapp.
+
   /// Progreso entre 0.0 y 1.0.
   @ignore
-  double get progress {
-    if (targetCents <= 0) return 0;
-    return (currentCents / targetCents).clamp(0.0, 1.0);
-  }
+  double get progress => goalProgress(currentCents, targetCents);
 
   /// Cantidad que aún falta para alcanzar el objetivo (en céntimos).
   @ignore
-  int get remainingCents => (targetCents - currentCents).clamp(0, targetCents);
+  int get remainingCents => goalRemainingCents(currentCents, targetCents);
 
   /// Meses estimados para alcanzar el objetivo con el aporte mensual previsto
   /// (modo 'contribution'). `null` si no aplica o falta info.
   @ignore
-  int? get monthsToTarget {
-    if (planMode != 'contribution' || monthlyContributionCents <= 0) return null;
-    if (remainingCents <= 0) return 0;
-    return (remainingCents / monthlyContributionCents).ceil();
-  }
+  int? get monthsToTarget => goalMonthsToTarget(
+        planMode: planMode,
+        monthlyContributionCents: monthlyContributionCents,
+        remainingCents: remainingCents,
+      );
 
   /// Fecha estimada de consecución (modo 'contribution').
   @ignore
-  DateTime? get projectedDate {
-    final months = monthsToTarget;
-    if (months == null) return null;
-    final now = DateTime.now();
-    return DateTime(now.year, now.month + months, now.day);
-  }
+  DateTime? get projectedDate => goalProjectedDate(
+        planMode: planMode,
+        monthlyContributionCents: monthlyContributionCents,
+        remainingCents: remainingCents,
+      );
 
   /// Aporte mensual necesario para llegar a la fecha límite (modo 'deadline').
   /// `null` si no aplica o la fecha ya pasó.
   @ignore
-  int? get requiredMonthlyCents {
-    if (planMode != 'deadline' || deadline == null) return null;
-    if (remainingCents <= 0) return 0;
-    final now = DateTime.now();
-    var months = (deadline!.year - now.year) * 12 + (deadline!.month - now.month);
-    if (deadline!.day > now.day) months += 1; // mes en curso parcial
-    if (months <= 0) return null;
-    return (remainingCents / months).ceil();
-  }
+  int? get requiredMonthlyCents => goalRequiredMonthlyCents(
+        planMode: planMode,
+        deadline: deadline,
+        remainingCents: remainingCents,
+      );
 }
