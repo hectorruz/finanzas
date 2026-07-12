@@ -89,7 +89,7 @@ class _MovementsFilterSheetState extends ConsumerState<MovementsFilterSheet> {
           TextField(
             controller: _queryController,
             decoration: const InputDecoration(
-              labelText: 'Buscar concepto o nota',
+              labelText: 'Buscar concepto, categoría o cuenta',
               prefixIcon: Icon(Icons.search),
             ),
           ),

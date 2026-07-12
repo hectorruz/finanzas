@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
+import '../../core/money/money.dart';
 import '../../core/router/app_router.dart';
+import '../../data/models/enums.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/category_repository.dart';
+import '../../data/repositories/lookups.dart';
 import '../../data/repositories/transaction_repository.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/money_text.dart';
@@ -23,7 +27,36 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
   final Set<int> _selected = {};
   bool get _selecting => _selected.isNotEmpty;
 
+  bool _searching = false;
+  final _searchController = TextEditingController();
+
   void _clearSelection() => setState(_selected.clear);
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _setQuery(String value) {
+    final filter = ref.read(transactionFilterProvider);
+    ref.read(transactionFilterProvider.notifier).state =
+        filter.copyWith(query: value);
+  }
+
+  void _closeSearch() {
+    setState(() => _searching = false);
+    _searchController.clear();
+    _setQuery('');
+  }
+
+  /// Limpia todos los filtros (incluida la búsqueda) y cierra la barra de búsqueda.
+  void _clearAllFilters() {
+    ref.read(transactionFilterProvider.notifier).state =
+        const TransactionFilter();
+    _searchController.clear();
+    setState(() => _searching = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,36 +89,75 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
                 ),
               ],
             )
-          : AppBar(
-              title: const Text('Movimientos'),
-              actions: [
-                IconButton(
-                  tooltip: 'Recurrentes',
-                  icon: const Icon(Icons.autorenew),
-                  onPressed: () => context.push(Routes.recurring),
-                ),
-                Stack(
-                  alignment: Alignment.topRight,
-                  children: [
-                    IconButton(
-                      tooltip: 'Filtros',
-                      icon: const Icon(Icons.filter_list),
-                      onPressed: _openFilters,
+          : _searching
+              ? AppBar(
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: _closeSearch,
+                  ),
+                  title: TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      hintText: 'Buscar concepto, categoría o cuenta…',
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Limpiar',
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                                _setQuery('');
+                                setState(() {});
+                              },
+                            ),
                     ),
-                    if (!filter.isEmpty)
-                      Positioned(
-                        right: 8,
-                        top: 8,
-                        child: CircleAvatar(
-                          radius: 4,
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primary,
+                    onChanged: (v) {
+                      _setQuery(v);
+                      setState(() {}); // refresca el botón de limpiar
+                    },
+                  ),
+                )
+              : AppBar(
+                  title: const Text('Movimientos'),
+                  actions: [
+                    IconButton(
+                      tooltip: 'Buscar',
+                      icon: const Icon(Icons.search),
+                      onPressed: () {
+                        _searchController.text = filter.query;
+                        setState(() => _searching = true);
+                      },
+                    ),
+                    IconButton(
+                      tooltip: 'Recurrentes',
+                      icon: const Icon(Icons.autorenew),
+                      onPressed: () => context.push(Routes.recurring),
+                    ),
+                    Stack(
+                      alignment: Alignment.topRight,
+                      children: [
+                        IconButton(
+                          tooltip: 'Filtros',
+                          icon: const Icon(Icons.filter_list),
+                          onPressed: _openFilters,
                         ),
-                      ),
+                        if (!filter.isEmpty)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: CircleAvatar(
+                              radius: 4,
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -106,33 +178,15 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       ),
       body: Column(
         children: [
-          if (!filter.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  const Icon(Icons.filter_list, size: 16),
-                  const SizedBox(width: 6),
-                  const Expanded(child: Text('Filtros activos')),
-                  TextButton(
-                    onPressed: () => ref
-                        .read(transactionFilterProvider.notifier)
-                        .state = const TransactionFilter(),
-                    child: const Text('Limpiar'),
-                  ),
-                ],
-              ),
-            ),
+          _FilterChipsBar(filter: filter),
           Expanded(
             child: AsyncValueView(
               value: transactions,
               data: (list) {
                 if (list.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No hay movimientos que coincidan.'),
-                    ),
+                  return _EmptyState(
+                    filtered: !filter.isEmpty,
+                    onClear: _clearAllFilters,
                   );
                 }
                 final total = list.fold<int>(0, (s, t) => s + t.signedCents);
@@ -270,6 +324,132 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
         .read(transactionRepositoryProvider)
         .bulkSetAccount(_selected.toList(), chosen);
     _clearSelection();
+  }
+}
+
+String _typeLabel(TransactionType t) => switch (t) {
+      TransactionType.income => 'Ingresos',
+      TransactionType.expense => 'Gastos',
+      TransactionType.transfer => 'Transferencias',
+    };
+
+/// Barra de chips que representa los filtros activos (salvo la búsqueda de
+/// texto, que ya la refleja la barra de búsqueda). Cada chip se puede quitar.
+class _FilterChipsBar extends ConsumerWidget {
+  const _FilterChipsBar({required this.filter});
+  final TransactionFilter filter;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final accountsById = ref.watch(accountsByIdProvider);
+    final categoriesById = ref.watch(categoriesByIdProvider);
+    final notifier = ref.read(transactionFilterProvider.notifier);
+
+    final chips = <Widget>[
+      for (final t in filter.types)
+        InputChip(
+          label: Text(_typeLabel(t)),
+          onDeleted: () => notifier.state =
+              filter.copyWith(types: {...filter.types}..remove(t)),
+        ),
+      for (final id in filter.accountIds)
+        InputChip(
+          avatar: const Icon(Icons.account_balance_wallet_outlined, size: 16),
+          label: Text(accountsById[id]?.name ?? 'Cuenta'),
+          onDeleted: () => notifier.state =
+              filter.copyWith(accountIds: {...filter.accountIds}..remove(id)),
+        ),
+      for (final id in filter.categoryIds)
+        InputChip(
+          avatar: const Icon(Icons.label_outline, size: 16),
+          label: Text(categoriesById[id]?.name ?? 'Categoría'),
+          onDeleted: () => notifier.state = filter.copyWith(
+              categoryIds: {...filter.categoryIds}..remove(id)),
+        ),
+      if (filter.minCents != null || filter.maxCents != null)
+        InputChip(
+          label: Text(_amountLabel(filter.minCents, filter.maxCents)),
+          onDeleted: () => notifier.state = filter.copyWith(clearAmounts: true),
+        ),
+      if (filter.from != null || filter.to != null)
+        InputChip(
+          avatar: const Icon(Icons.calendar_today, size: 14),
+          label: Text(_dateLabel(filter.from, filter.to)),
+          onDeleted: () => notifier.state = filter.copyWith(clearDates: true),
+        ),
+    ];
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 4, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Wrap(spacing: 6, runSpacing: -4, children: chips),
+          ),
+          TextButton(
+            onPressed: () => notifier.state = const TransactionFilter(),
+            child: const Text('Limpiar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _amountLabel(int? min, int? max) {
+    String fmt(int c) => Money(c).format();
+    if (min != null && max != null) return '${fmt(min)} – ${fmt(max)}';
+    if (min != null) return '≥ ${fmt(min)}';
+    return '≤ ${fmt(max!)}';
+  }
+
+  String _dateLabel(DateTime? from, DateTime? to) {
+    final f = DateFormat('d/M/yy');
+    if (from != null && to != null) {
+      return '${f.format(from)} – ${f.format(to)}';
+    }
+    if (from != null) return 'Desde ${f.format(from)}';
+    return 'Hasta ${f.format(to!)}';
+  }
+}
+
+/// Estado vacío: distingue "sin resultados de búsqueda/filtro" de "sin datos".
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.filtered, required this.onClear});
+  final bool filtered;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(filtered ? Icons.search_off : Icons.receipt_long_outlined,
+                size: 48, color: scheme.outline),
+            const SizedBox(height: 12),
+            Text(
+              filtered
+                  ? 'Sin resultados para tu búsqueda.'
+                  : 'No hay movimientos todavía.',
+              textAlign: TextAlign.center,
+            ),
+            if (filtered) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: onClear,
+                icon: const Icon(Icons.clear_all),
+                label: const Text('Limpiar filtros'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 

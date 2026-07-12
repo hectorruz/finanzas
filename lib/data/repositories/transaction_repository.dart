@@ -6,6 +6,7 @@ import '../../core/sync/sync_stamp.dart';
 import '../models/enums.dart';
 import '../models/transaction.dart';
 import 'account_repository.dart';
+import 'lookups.dart';
 
 /// Criterios de filtrado y ordenación de movimientos (filtros "tipo Excel").
 class TransactionFilter {
@@ -147,9 +148,30 @@ class TransactionRepository {
   /// Aplica un [TransactionFilter]. El rango de fechas, tipo e importe se
   /// resuelven en Isar; búsqueda de texto, cuenta y categoría se afinan en
   /// memoria (el conjunto de datos personal es pequeño).
-  Future<List<TransactionModel>> query(TransactionFilter f) async {
+  ///
+  /// La búsqueda de texto ([TransactionFilter.query]) coincide con el concepto y
+  /// la nota, y —si se pasan [accountNames]/[categoryNames] (mapas id → nombre)—
+  /// también con el nombre de la cuenta (origen o destino) y de la categoría.
+  Future<List<TransactionModel>> query(
+    TransactionFilter f, {
+    Map<int, String> accountNames = const {},
+    Map<int, String> categoryNames = const {},
+  }) async {
     final all = await _isar.transactions.filter().deletedAtIsNull().findAll();
     final query = f.query.trim().toLowerCase();
+
+    bool matchesText(TransactionModel t) {
+      if (t.concept.toLowerCase().contains(query)) return true;
+      if (t.note.toLowerCase().contains(query)) return true;
+      final cat = t.categoryId == null ? null : categoryNames[t.categoryId];
+      if (cat != null && cat.toLowerCase().contains(query)) return true;
+      final acc = accountNames[t.accountId];
+      if (acc != null && acc.toLowerCase().contains(query)) return true;
+      final toAcc =
+          t.toAccountId == null ? null : accountNames[t.toAccountId];
+      if (toAcc != null && toAcc.toLowerCase().contains(query)) return true;
+      return false;
+    }
 
     final filtered = all.where((t) {
       if (f.from != null && t.date.isBefore(f.from!)) return false;
@@ -166,11 +188,7 @@ class TransactionRepository {
       }
       if (f.minCents != null && t.amountCents < f.minCents!) return false;
       if (f.maxCents != null && t.amountCents > f.maxCents!) return false;
-      if (query.isNotEmpty &&
-          !t.concept.toLowerCase().contains(query) &&
-          !t.note.toLowerCase().contains(query)) {
-        return false;
-      }
+      if (query.isNotEmpty && !matchesText(t)) return false;
       return true;
     }).toList();
 
@@ -220,7 +238,20 @@ final filteredTransactionsProvider =
     FutureProvider<List<TransactionModel>>((ref) async {
   ref.watch(transactionsChangedProvider);
   final filter = ref.watch(transactionFilterProvider);
-  return ref.watch(transactionRepositoryProvider).query(filter);
+  // Mapas id → nombre para que la búsqueda de texto también coincida con el
+  // nombre de la cuenta/categoría (reactivo a renombrados vía los lookups).
+  final accountNames = {
+    for (final e in ref.watch(accountsByIdProvider).entries) e.key: e.value.name
+  };
+  final categoryNames = {
+    for (final e in ref.watch(categoriesByIdProvider).entries)
+      e.key: e.value.name
+  };
+  return ref.watch(transactionRepositoryProvider).query(
+        filter,
+        accountNames: accountNames,
+        categoryNames: categoryNames,
+      );
 });
 
 /// Últimos movimientos para el dashboard.
