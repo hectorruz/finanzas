@@ -45,6 +45,9 @@ dependencies:
 
   # Mantener vivo el servidor de sync en segundo plano (servicio en primer plano)
   flutter_foreground_task: ^8.10.0
+
+  # Tareas periódicas en segundo plano (copias de seguridad automáticas)
+  workmanager: ^0.9.0+3
   # Detectar cambios de red (auto-sync al conectarse a la Wi-Fi)
   connectivity_plus: ^6.1.0
 
@@ -74,6 +77,9 @@ dependencies:
   flutter_local_notifications: ^21.0.0
   timezone: ^0.11.1
   flutter_timezone: ^5.1.0
+  google_sign_in: ^7.2.0
+  googleapis: ^16.0.0
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
 
 dev_dependencies:
   flutter_test:

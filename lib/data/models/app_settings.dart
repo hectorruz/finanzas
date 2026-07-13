@@ -166,6 +166,74 @@ class AppSettings {
   /// 1-7). Vacío = todos los días.
   List<int> syncReminderWeekdays = [];
 
+  // --- Copias de seguridad automáticas (local: no se sincroniza ni se respalda) ---
+
+  /// Si están activas las copias de seguridad automáticas programadas. Es una
+  /// preferencia de **este** dispositivo (dónde y cada cuánto guarda su propia
+  /// copia), por eso no se sincroniza ni se incluye en el backup.
+  bool backupEnabled = false;
+
+  /// Frecuencia de la copia, por nombre de [BackupFrequency].
+  String backupFrequency = 'weekly';
+
+  /// Destino de la copia, por nombre de [BackupDestination].
+  String backupDestination = 'localFile';
+
+  /// Hora/minuto preferidos para la copia (24h, hora local del dispositivo).
+  int backupHour = 3;
+  int backupMinute = 0;
+
+  /// Momento de la última copia realizada con éxito. Lo usa el planificador
+  /// (`backup_planner.dart`) para decidir si toca una copia nueva.
+  DateTime? backupLastRunAt;
+
+  /// Resultado/estado legible de la última copia (para mostrarlo en Ajustes).
+  String backupLastResult = '';
+
+  /// Cuántas copias conservar en el destino (rotación; borra las más antiguas).
+  int backupKeepLast = 10;
+
+  // --- Nextcloud (destino de copia; local: no se sincroniza ni se respalda) ---
+
+  /// URL base del servidor Nextcloud (p. ej. `https://nube.ejemplo.com`).
+  String nextcloudBaseUrl = '';
+
+  /// Usuario de Nextcloud.
+  String nextcloudUser = '';
+
+  /// Contraseña de aplicación de Nextcloud (mejor una *app password*, no la
+  /// principal). Local: nunca se sincroniza ni se exporta.
+  String nextcloudPassword = '';
+
+  /// Carpeta remota donde se suben las copias.
+  String nextcloudFolder = 'Finanzas';
+
+  // --- Google Drive (destino de copia; local) ---
+
+  /// Email de la cuenta de Google conectada (solo para mostrar). El token lo
+  /// gestiona/cachea `google_sign_in`; no se persiste aquí ni se exporta.
+  String googleDriveAccountEmail = '';
+
+  // --- Lectura de notificaciones de Google Wallet (local: no se sincroniza ni
+  //     se respalda; es una preferencia/permiso de este dispositivo) ---
+
+  /// Si se leen las notificaciones de pago de Google Wallet para crear el gasto
+  /// automáticamente.
+  bool walletReaderEnabled = false;
+
+  /// Cuenta a la que se imputan los gastos detectados. `0` = primera cuenta
+  /// activa (por defecto).
+  int walletDefaultAccountId = 0;
+
+  /// Paquetes de las apps cuyas notificaciones se leen (por defecto, Google
+  /// Wallet). Se envían al servicio nativo como filtro de origen.
+  List<String> walletSourcePackages = ['com.google.android.apps.walletnfcrel'];
+
+  /// Huellas de las notificaciones ya procesadas (importe|comercio|día), para no
+  /// crear dos veces el mismo gasto si una notificación se reentrega. Se poda a
+  /// las últimas ~300.
+  List<String> walletProcessedHashes = [];
+
   // --- Migraciones ---
 
   /// Versión del esquema de datos ya aplicada en esta BD. La usa el migrador
@@ -181,6 +249,16 @@ class AppSettings {
   /// añadiéndolo o quitándolo de la barra inferior (no hay interruptor propio).
   @ignore
   bool get goalsEnabled => true;
+
+  /// Frecuencia de copia parseada de forma segura (fallback semanal).
+  @ignore
+  BackupFrequency get backupFrequencyEnum => enumByName(
+      BackupFrequency.values, backupFrequency, BackupFrequency.weekly);
+
+  /// Destino de copia parseado de forma segura (fallback archivo local).
+  @ignore
+  BackupDestination get backupDestinationEnum => enumByName(
+      BackupDestination.values, backupDestination, BackupDestination.localFile);
 
   /// Subtotales del balance parseados de forma segura (descarta entradas
   /// corruptas). Para escribir, codifica con [BalanceSubtotal.encode].

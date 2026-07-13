@@ -49,6 +49,18 @@ And `android/app/src/main/AndroidManifest.xml`:
       android:stopWithTask="true"
       android:exported="false" />
   ```
+- Declare the Wallet notification listener (`WalletNotificationListenerService`, package `com.example.finanzas`) so the app can read Google Wallet payment notifications. No `<uses-permission>` is needed — `BIND_NOTIFICATION_LISTENER_SERVICE` is held by the system, not the app; the user grants access from *Settings → Notification access*. Same shape as the existing `QuickAddTileService` (`exported="true"` + the BIND permission):
+  ```xml
+  <service
+      android:name=".WalletNotificationListenerService"
+      android:exported="true"
+      android:label="Finanzas · Wallet"
+      android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+      <intent-filter>
+          <action android:name="android.service.notification.NotificationListenerService" />
+      </intent-filter>
+  </service>
+  ```
 
 For the app lock (`local_auth`), `MainActivity` must extend `FlutterFragmentActivity` (not `FlutterActivity`); otherwise the biometric prompt crashes.
 
@@ -350,6 +362,112 @@ El OCR es **on-device** (ML Kit Text Recognition) y la pantalla de escaneo es la
   el guardado); la copia persistente de la app en `receipts/` sigue siendo la
   fuente de verdad. El detalle del ticket tiene además un botón "Guardar en
   galería" para volcar tickets antiguos al álbum bajo demanda.
+
+### Copias de seguridad automáticas (fase 7)
+
+Copias programadas del JSON completo (`BackupService.exportJson()`, el mismo que
+"Exportar datos") a **Archivo local**, **Nextcloud** o **Google Drive**, con
+frecuencia **diaria / semanal / mensual** (`lib/features/backup/`). Toda la
+configuración son campos **locales** de `AppSettings` (`backupEnabled`,
+`backupFrequency`, `backupDestination`, `backupHour/Minute`, `backupKeepLast`,
+`backupLastRunAt/Result`, `nextcloud*`, `googleDriveAccountEmail`): **no** se
+sincronizan ni se incluyen en el backup exportable (no se tocó `_settingsToMap`).
+
+- **Planificador puro** (`backup_planner.dart`, testeado inyectando `now:`):
+  `isBackupDue` (diaria=1d, semanal=7d, mensual=30d desde `backupLastRunAt`) y
+  `nextBackupTime` (solo informativo, para la UI).
+- **Destinos** (`BackupTarget`, `upload(filename, bytes)` + `label`):
+  - `LocalFileBackupTarget`: `getApplicationDocumentsDirectory()/backups/`, rota
+    conservando `backupKeepLast`.
+  - `NextcloudBackupTarget`: WebDAV `PUT` con `Basic` auth (app password), `MKCOL`
+    de la carpeta, rotación best-effort vía `PROPFIND` + `DELETE`. Sin TLS propio
+    (se apoya en el `https://` del servidor). "Probar conexión" sube y borra un
+    fichero de prueba.
+  - `GoogleDriveBackupTarget` + `GoogleDriveAuth`: scope **`drive.file`** (solo lo
+    creado por la app). Usa **solo el flujo de autorización** de `google_sign_in`
+    7.x (`authorizationClient.authorizeScopes` interactivo desde la UI;
+    `authorizationForScopes` silencioso en el worker), **no** la autenticación con
+    Credential Manager → basta una credencial OAuth de tipo **Android** (paquete +
+    SHA-1) y **no** hace falta client id de tipo Web, `serverClientId` ni
+    `google-services.json`. `AuthClient` (extensión
+    `extension_google_sign_in_as_googleapis_auth`) implementa `http.Client` y se
+    pasa a `drive.DriveApi`.
+- **`BackupSchedulerService(Isar)`**: `runNow({notify})` (serializa → `upload` →
+  actualiza estado → notifica) y `runIfDue()` (solo si toca; red de seguridad al
+  abrir/reanudar la app). `_targetFor(AppSettings)` elige el destino. Canal de
+  notificación `backup`, id **`800000000`** (base propia, disjunta de recurrentes
+  y del sync `900000000+`).
+- **Segundo plano real: WorkManager** (`backup_worker.dart`, dep
+  `workmanager: ^0.9.0+3` — la 0.5.x usa APIs del *embedding v1* y **no compila**
+  con Flutter 3.44). Tarea periódica (latido de 6 h; mínimo del sistema 15 min)
+  con `@pragma('vm:entry-point') backupCallbackDispatcher()` que abre Isar y llama
+  `runIfDue()`. Se registra/cancela en `main()` y al guardar los ajustes según
+  `backupEnabled`; `requiresNetwork` si el destino no es local. Sujeto a Doze /
+  límites del fabricante → la copia al abrir/reanudar (`main.dart`, `app.dart`) es
+  la red de seguridad. El plugin `workmanager` **no requiere** cambios de
+  manifiesto (`google_sign_in` 7.x tampoco; trae sus deps y exige `minSdk 24`, que
+  ya es el default de Flutter).
+- **UI**: Ajustes → "Copias de seguridad automáticas"
+  (`backup_settings_screen.dart`): activar, frecuencia, hora, destino, campos de
+  Nextcloud + "Probar conexión", "Conectar cuenta de Google" (con los pasos de
+  Google Cloud), "Hacer copia ahora" y estado de la última copia.
+
+**Config única de Google Cloud (la hace el usuario):** proyecto en Cloud Console
+→ activar **Google Drive API** → pantalla de consentimiento OAuth (Externo, con el
+usuario de prueba) → credencial **OAuth de tipo Android** con paquete
+`com.example.finanzas` y la **huella SHA-1** del keystore de release
+(`finanzas.keystore`). Sin esto, `authorizeScopes` falla con un error de
+configuración del cliente.
+
+### Lectura de notificaciones de Google Wallet (fase 8)
+
+Al pagar con el móvil, lee la notificación de Google Wallet y **crea el gasto
+automáticamente** (`lib/features/wallet/`). Ajustes locales de `AppSettings`
+(no se sincronizan ni se respaldan): `walletReaderEnabled`,
+`walletDefaultAccountId` (0 = primera cuenta activa), `walletSourcePackages`
+(por defecto `com.google.android.apps.walletnfcrel`) y `walletProcessedHashes`
+(huellas idempotentes, podadas a 300).
+
+- **Servicio nativo** (Kotlin, `com.example.finanzas`)
+  `WalletNotificationListenerService` extends `NotificationListenerService`:
+  filtra por paquete de origen y guarda título+texto+timestamp+paquete en un
+  buffer **persistente** (`SharedPreferences` `wallet_reader`, lista JSON, cap
+  200). Vive independiente del engine de Flutter → **captura pagos con la app
+  cerrada**. Manifiesto: ver la entrada de setup arriba.
+- **Puente** MethodChannel `com.example.finanzas/wallet` (en `MainActivity.kt`,
+  junto al de `quick_tile`): `isPermissionGranted`, `openListenerSettings`
+  (deep-link a *Notification access*), `drainBuffer` (devuelve y vacía),
+  `peekBuffer` (sin vaciar, para el visor) y `setSourcePackages`. Dart:
+  `lib/core/platform/wallet_notifications.dart` (tolerante a
+  `MissingPluginException` en tests/no-Android).
+- **Parser puro** `wallet_notification_parser.dart` (+ test):
+  `parseWalletNotification(...)` → `{cents, merchant, date}` o `null` si no es un
+  pago. Heurísticas de importe (€/$, coma o punto decimal, miles) y de comercio
+  ("en/at COMERCIO" o el título si no es genérico), ES + EN. **Heurístico**: el
+  visor de capturas (Ajustes) sirve para afinarlo con notificaciones reales.
+- **Resolución de categoría** (`wallet_ingest_service.dart`, en orden): 1)
+  **supermercado conocido** (`known_supermarkets.dart`, puro/testeado — Lidl /
+  Mercadona / Dia → categoría **"Alimentación"** y concepto = nombre canónico de
+  la tienda; match por **palabra**, no substring, para no confundir "dia"); 2)
+  `MerchantRuleRepository.categoryFor`; 3) `ReceiptParser.suggestCategory`. Si no
+  hay categoría, el gasto se crea igual sin ella.
+- **Creación del gasto**: `findPossibleDuplicate` (reutiliza el detector de
+  tickets) contra los movimientos de ±1 día; si no es duplicado, crea el
+  `TransactionModel` (gasto, cuenta por defecto) vía `TransactionRepository.save`
+  (sella el sync solo) y, si la categoría es fiable, `MerchantRule.remember`.
+  Notificación tocable "Gasto detectado" (canal `wallet`, id base `810000000` +
+  `txnId % 1000000`) con payload `wallet:<id>` que abre el editor del movimiento
+  (rama en `_handleNotificationPayload` de `app.dart`) para editar/deshacer.
+- **Drenado**: `WalletIngestService.drainAndProcess()` en `main()` (arranque) y en
+  el `resumed` de `app.dart`. **No** se drena desde el worker de WorkManager: su
+  isolate de segundo plano no tiene registrado el MethodChannel de
+  `MainActivity` (viven en engines distintos), así que los pagos capturados con
+  la app cerrada se procesan en el siguiente arranque/reanudación (el buffer
+  nativo persiste). Idempotente por huella `importe|comercio|día`.
+- **UI**: Ajustes → "Automatización" → "Leer notificaciones de Google Wallet"
+  (`wallet_settings_screen.dart`): activar, estado del permiso + botón para
+  concederlo, cuenta por defecto, apps de origen (añadir/quitar), "Procesar
+  ahora" y visor de notificaciones capturadas (con lo que extrae el parser).
 
 ### Privacy mode (hide amounts)
 

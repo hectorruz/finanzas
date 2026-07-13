@@ -4,16 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:isar_community/isar.dart';
 
 import 'app.dart';
 import 'core/db/isar_provider.dart';
 import 'core/db/isar_service.dart';
+import 'data/models/enums.dart';
 import 'data/repositories/recurring_repository.dart';
 import 'data/repositories/settings_repository.dart';
 import 'data/seed_service.dart';
+import 'core/platform/wallet_notifications.dart';
+import 'features/backup/backup_scheduler_service.dart';
+import 'features/backup/backup_worker.dart';
 import 'features/notifications/notification_service.dart';
 import 'features/quick_add/quick_add_popup.dart';
 import 'features/sync/sync_reminder_service.dart';
+import 'features/wallet/wallet_ingest_service.dart';
 
 /// Entrypoint del popup de alta rápida lanzado por el tile de Ajustes rápidos
 /// (Android `QuickAddActivity`). Abre solo un diálogo translúcido para añadir
@@ -68,6 +74,16 @@ Future<void> main() async {
   unawaited(RecurringNotificationService(isar).rescheduleAll());
   unawaited(SyncReminderService(SettingsRepository(isar)).reschedule());
 
+  // Copias de seguridad automáticas: registrar/cancelar la tarea periódica de
+  // segundo plano (WorkManager) según los ajustes y, como red de seguridad,
+  // hacer una copia si ya tocaba (igual que `materializeDue` con las
+  // recurrentes). Sin bloquear el arranque.
+  unawaited(_setUpBackups(isar));
+
+  // Lectura de notificaciones de Google Wallet: sincroniza al servicio nativo
+  // las apps de origen y procesa lo capturado con la app cerrada. Sin bloquear.
+  unawaited(_setUpWallet(isar));
+
   runApp(
     ProviderScope(
       overrides: [
@@ -76,4 +92,39 @@ Future<void> main() async {
       child: const FinanzasApp(),
     ),
   );
+}
+
+/// Deja el segundo plano de las copias en sintonía con los ajustes y lanza una
+/// copia si ya tocaba. El worker de WorkManager abre su propio Isar; aquí solo
+/// registramos/cancelamos la tarea y ejecutamos la red de seguridad al arrancar.
+Future<void> _setUpBackups(Isar isar) async {
+  try {
+    await initBackupWorkmanager();
+    final s = await SettingsRepository(isar).getOrCreate();
+    if (s.backupEnabled) {
+      await registerBackupTask(
+        requiresNetwork:
+            s.backupDestinationEnum != BackupDestination.localFile,
+      );
+      await BackupSchedulerService(isar).runIfDue();
+    } else {
+      await cancelBackupTask();
+    }
+  } catch (_) {
+    // WorkManager no disponible (p. ej. plataforma sin plugin): las copias
+    // seguirán intentándose como red de seguridad al abrir/reanudar la app.
+  }
+}
+
+/// Pone al día el filtro de apps de origen del servicio nativo de Wallet y
+/// procesa las notificaciones capturadas mientras la app estaba cerrada.
+Future<void> _setUpWallet(Isar isar) async {
+  try {
+    final s = await SettingsRepository(isar).getOrCreate();
+    if (!s.walletReaderEnabled) return;
+    await WalletNotifications.setSourcePackages(s.walletSourcePackages);
+    await WalletIngestService(isar).drainAndProcess();
+  } catch (_) {
+    // Plataforma sin el canal (no-Android/tests): se ignora.
+  }
 }
