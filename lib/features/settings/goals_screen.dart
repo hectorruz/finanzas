@@ -33,7 +33,8 @@ class GoalsScreen extends ConsumerWidget {
             );
           }
           return ListView.builder(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.fromLTRB(
+                12, 12, 12, 96 + MediaQuery.paddingOf(context).bottom),
             itemCount: list.length,
             itemBuilder: (_, i) {
               final g = list[i];
@@ -173,11 +174,12 @@ class _GoalEditorState extends ConsumerState<_GoalEditor> {
   @override
   Widget build(BuildContext context) {
     final label = goalPlanLabel(_draft());
+    final media = MediaQuery.of(context);
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        bottom: media.viewInsets.bottom + media.padding.bottom + 16,
       ),
       child: SingleChildScrollView(
         child: Column(

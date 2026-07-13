@@ -83,7 +83,8 @@ class _MovementDetailView extends ConsumerWidget {
 
     return ListView(
       controller: controller,
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      padding: EdgeInsets.fromLTRB(
+          20, 0, 20, 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         Row(
           children: [

@@ -206,11 +206,12 @@ class _CategoryEditorState extends ConsumerState<_CategoryEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        bottom: media.viewInsets.bottom + media.padding.bottom + 16,
       ),
       child: SingleChildScrollView(
         child: Column(

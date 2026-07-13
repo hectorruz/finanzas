@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -34,6 +35,18 @@ Future<void> quickAddMain() async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Edge-to-edge explícito: en Android con Flutter ≥3.24 y compileSdk alto el
+  // modo edge-to-edge es obligatorio (la app dibuja bajo las barras del
+  // sistema). Lo fijamos de forma determinista y dejamos la barra de navegación
+  // transparente; cada pantalla/hoja añade el padding del inset inferior para
+  // que los botones no queden tapados por la barra de 3 botones.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarContrastEnforced: false,
+  ));
 
   // Datos de localización para DateFormat en español.
   await initializeDateFormatting('es_ES', null);

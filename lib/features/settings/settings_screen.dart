@@ -206,22 +206,25 @@ class SettingsScreen extends ConsumerWidget {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (_) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final entry in const {
-            'system': 'Según el sistema',
-            'light': 'Claro',
-            'dark': 'Oscuro',
-          }.entries)
-            ListTile(
-              title: Text(entry.value),
-              onTap: () {
-                repo.update((s) => s.themeMode = entry.key);
-                Navigator.pop(context);
-              },
-            ),
-        ],
+      builder: (_) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final entry in const {
+              'system': 'Según el sistema',
+              'light': 'Claro',
+              'dark': 'Oscuro',
+            }.entries)
+              ListTile(
+                title: Text(entry.value),
+                onTap: () {
+                  repo.update((s) => s.themeMode = entry.key);
+                  Navigator.pop(context);
+                },
+              ),
+          ],
+        ),
       ),
     );
   }

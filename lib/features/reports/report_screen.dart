@@ -324,6 +324,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => ListView(
           shrinkWrap: true,
+          padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(ctx).bottom),
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -354,6 +355,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => ListView(
           shrinkWrap: true,
+          padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(ctx).bottom),
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 8, 16, 8),

@@ -324,6 +324,8 @@ class _PickerSheetState extends State<_PickerSheet> {
                       )
                     : ListView.builder(
                         controller: scrollController,
+                        padding:
+                            EdgeInsets.only(bottom: media.padding.bottom),
                         itemCount: rows.length,
                         itemBuilder: (context, index) =>
                             _buildRow(rows[index], theme),

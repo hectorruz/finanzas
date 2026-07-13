@@ -49,9 +49,10 @@ class ParsedReceipt {
 /// (total / subtotal / efectivo / cambio…), su posición y si se repite.
 class ReceiptParser {
   ParsedReceipt parse(List<OcrLine> lines) {
-    final rows = reconstructRows(lines);
+    final detailed = _detailedRows(lines);
+    final rows = [for (final r in detailed) r.text];
     final text = rows.join('\n');
-    final merchant = detectMerchantInfo(rows);
+    final merchant = _detectMerchantFromRows(detailed);
     final total = detectTotal(rows);
     return ParsedReceipt(
       rawText: text,
@@ -70,7 +71,13 @@ class ReceiptParser {
   /// importes alineados a la derecha la etiqueta ("TOTAL") y su número llegan
   /// separados. Aquí se reagrupan por solapamiento vertical: dos líneas están
   /// en la misma fila si sus centros distan menos de media altura de línea.
-  static List<String> reconstructRows(List<OcrLine> lines) {
+  static List<String> reconstructRows(List<OcrLine> lines) =>
+      [for (final r in _detailedRows(lines)) r.text];
+
+  /// Como [reconstructRows] pero conservando el rectángulo unión de cada fila
+  /// física. La geometría (altura ≈ tamaño de fuente, posición) es la señal
+  /// clave para detectar el comercio, así que no se descarta en este límite.
+  static List<_Row> _detailedRows(List<OcrLine> lines) {
     final items = lines
         .map((l) => OcrLine(l.text.trim(), l.box))
         .where((l) => l.text.isNotEmpty)
@@ -78,7 +85,7 @@ class ReceiptParser {
     if (items.isEmpty) return const [];
     // Sin geometría fiable no se puede reordenar: se respeta el orden dado.
     if (items.any((l) => l.box == null || l.box!.height <= 0)) {
-      return items.map((l) => l.text).toList();
+      return [for (final l in items) _Row(l.text, null)];
     }
 
     final heights = items.map((l) => l.box!.height).toList()..sort();
@@ -105,12 +112,16 @@ class ReceiptParser {
       rowCenterSum = cy;
     }
 
+    final result = <_Row>[];
     for (final row in rows) {
       row.sort((a, b) => a.box!.left.compareTo(b.box!.left));
+      var bounds = row.first.box!;
+      for (final l in row.skip(1)) {
+        bounds = bounds.expandToInclude(l.box!);
+      }
+      result.add(_Row(row.map((l) => l.text).join(' '), bounds));
     }
-    return [
-      for (final row in rows) row.map((l) => l.text).join(' '),
-    ];
+    return result;
   }
 
   // Importe monetario: 1-4 dígitos (con miles opcionales) + 2 decimales.
@@ -275,11 +286,46 @@ class ReceiptParser {
     return amounts;
   }
 
+  /// Marcas conocidas: si una fila de cabecera contiene una de ellas, es el
+  /// comercio con alta confianza aunque no sea la línea más grande. Se comparan
+  /// como subcadena en minúsculas.
+  static const List<String> knownMerchants = [
+    // Supermercados
+    'mercadona', 'carrefour', 'lidl', 'aldi', 'eroski', 'alcampo', 'consum',
+    'hipercor', 'el corte ingles', 'ahorramas', 'ahorra mas', 'condis',
+    'bonpreu', 'gadis', 'froiz', 'coviran', 'spar', 'caprabo', 'supersol',
+    'masymas', 'mas y mas', 'dia %', 'supermercado dia', 'supeco',
+    // Gasolineras
+    'repsol', 'cepsa', 'shell', 'galp', 'ballenoil', 'petronor', 'plenoil',
+    // Tiendas / grandes superficies
+    'zara', 'decathlon', 'mediamarkt', 'media markt', 'amazon', 'ikea',
+    'leroy merlin', 'bricomart', 'primark', 'pull&bear', 'bershka',
+    'stradivarius', 'fnac', 'worten', 'pccomponentes', 'aki', 'bricodepot',
+    // Restauración
+    'mcdonald', 'burger king', 'kfc', 'telepizza', 'domino', 'starbucks',
+    'vips', 'foster', 'goiko', 'taco bell', 'pans & company', 'pans and',
+    // Salud / cosmética
+    'farmacia', 'druni', 'primor', 'perfumeria',
+  ];
+
+  /// Ruido de cabecera que **no** es el nombre del comercio: direcciones, datos
+  /// fiscales, teléfonos, webs, fechas/horas y frases de cortesía.
+  static final RegExp _merchantNoiseRe = RegExp(
+    r'\bc/|calle|avda|avenida|\bav\.|plaza|\bpza|paseo|\bctra|carretera|'
+    r'pol[ií]gono|\bpol\.|\burb\b|local\b|planta\b|'
+    r'\bcif\b|\bnif\b|c\.i\.f|n\.i\.f|\biva\b|factura|ticket|\bnum\b|'
+    r'n[uú]mero|tel[eé]?f?[\s:o]|\btlf\b|www\.|http|@|\.com|\.es\b|'
+    r'gracias|bienvenid|horario|abierto|'
+    r'\d{1,2}[:h]\d{2}|\d{2}[/\-.]\d{2}[/\-.]\d{2,4}|\b\d{5}\b',
+  );
+
   /// El comercio suele estar en las primeras líneas (cabecera del ticket).
   static String? detectMerchant(List<String> rows) => detectMerchantInfo(rows).name;
 
-  /// Como [detectMerchant], indicando si salió de una cabecera plausible
-  /// (confianza alta) o del fallback "primera fila".
+  /// Heurística **sin geometría** (para texto plano/tests): primera fila
+  /// plausible de la cabecera; si ninguna lo es, la primera fila (baja
+  /// confianza). La ruta con geometría (más precisa) es
+  /// [_detectMerchantFromRows], que usa esta como respaldo.
   static ({String? name, bool confident}) detectMerchantInfo(List<String> rows) {
     for (final row in rows.take(4)) {
       final letters = row.replaceAll(RegExp(r'[^A-Za-zÀ-ÿ]'), '');
@@ -295,6 +341,75 @@ class ReceiptParser {
       name: rows.isNotEmpty ? _titleCase(rows.first) : null,
       confident: false,
     );
+  }
+
+  /// Detecta el comercio puntuando las filas de **cabecera** con la geometría:
+  /// el nombre de la tienda suele ser el texto **más grande y arriba**. Señales
+  /// combinadas: tamaño de fuente (altura de caja frente a la mediana), posición
+  /// vertical, proporción de letras, MAYÚSCULAS y diccionario de marcas; se
+  /// descartan filas con importe, que empiezan por dígito o que son ruido de
+  /// cabecera (dirección, CIF, teléfono, web, fecha…). Sin geometría delega en
+  /// [detectMerchantInfo].
+  static ({String? name, bool confident}) _detectMerchantFromRows(
+      List<_Row> rows) {
+    if (rows.isEmpty) return (name: null, confident: false);
+    final hasGeometry = rows.any((r) => r.bounds != null);
+    if (!hasGeometry) {
+      return detectMerchantInfo([for (final r in rows) r.text]);
+    }
+
+    final hs = [for (final r in rows) if (r.bounds != null) r.bounds!.height]
+      ..sort();
+    final medianHeight = hs.isEmpty ? 1.0 : hs[hs.length ~/ 2];
+
+    final headerCount = rows.length < 8 ? rows.length : 8;
+    _MerchantCand? best;
+    for (var i = 0; i < headerCount; i++) {
+      final text = rows[i].text;
+      final lower = text.toLowerCase();
+      // Exclusiones duras: cabeceras no llevan precios ni empiezan por dígito
+      // (direcciones, códigos postales), y descartamos el ruido conocido.
+      if (amountsIn(text).isNotEmpty) continue;
+      if (RegExp(r'^\s*\d').hasMatch(text)) continue;
+      if (_merchantNoiseRe.hasMatch(lower)) continue;
+      final letters = text.replaceAll(RegExp(r'[^A-Za-zÀ-ÿ]'), '');
+      if (letters.length < 3) continue;
+
+      final bounds = rows[i].bounds;
+      final ratio = bounds != null ? bounds.height / medianHeight : 1.0;
+      final compact = text.replaceAll(RegExp(r'\s'), '');
+      final letterRatio = compact.isEmpty ? 0.0 : letters.length / compact.length;
+      final brand = knownMerchants.any(lower.contains);
+
+      var score = (ratio - 1.0) * 40; // tamaño de fuente (señal principal)
+      score += (headerCount - i) * 3; // más arriba, mejor
+      if (letterRatio >= 0.6) score += 15;
+      if (letters.length >= 3 && letters == letters.toUpperCase()) score += 8;
+      if (brand) score += 1000; // marca conocida: decisivo
+
+      if (best == null || score > best.score) {
+        best = _MerchantCand(text, score, ratio, brand);
+      }
+    }
+
+    if (best == null) {
+      // Ninguna cabecera plausible: respaldo a la primera fila, baja confianza.
+      return (name: _titleCase(rows.first.text), confident: false);
+    }
+    // Confianza alta si es una marca conocida o destaca claramente por tamaño.
+    final confident = best.brand || best.heightRatio >= 1.25;
+    return (name: _cleanMerchant(best.text), confident: confident);
+  }
+
+  /// Limpia el nombre del comercio para mostrarlo (y para que el mismo comercio
+  /// produzca la misma cadena entre escaneos, mejorando la memoria
+  /// comercio→categoría): quita símbolos de OCR y colapsa espacios.
+  static String _cleanMerchant(String input) {
+    final cleaned = input
+        .replaceAll(RegExp(r'[*#|_]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return _titleCase(cleaned);
   }
 
   static DateTime? detectDate(String text) {
@@ -407,4 +522,22 @@ class _Candidate {
   int score;
 
   _Candidate(this.cents, this.rowIndex, this.score);
+}
+
+/// Fila física reconstruida con su rectángulo unión (null sin geometría).
+class _Row {
+  final String text;
+  final Rect? bounds;
+  const _Row(this.text, this.bounds);
+}
+
+/// Candidato a comercio con su puntuación y las señales que deciden la
+/// confianza (marca conocida / tamaño de fuente relativo).
+class _MerchantCand {
+  final String text;
+  final double score;
+  final double heightRatio;
+  final bool brand;
+
+  _MerchantCand(this.text, this.score, this.heightRatio, this.brand);
 }

@@ -271,6 +271,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       context: context,
       showDragHandle: true,
       builder: (_) => ListView(
+        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
         children: [
           const ListTile(title: Text('Asignar categoría')),
           ListTile(
@@ -304,6 +305,7 @@ class _MovementsScreenState extends ConsumerState<MovementsScreen> {
       context: context,
       showDragHandle: true,
       builder: (_) => ListView(
+        padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
         children: [
           const ListTile(title: Text('Mover a la cuenta')),
           for (final e in flattenAccounts(accounts))

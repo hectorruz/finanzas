@@ -67,7 +67,9 @@ class _MovementsFilterSheetState extends ConsumerState<MovementsFilterSheet> {
       maxChildSize: 0.95,
       builder: (_, controller) => ListView(
         controller: controller,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        padding: EdgeInsets.fromLTRB(16, 0, 16,
+            24 + MediaQuery.viewInsetsOf(context).bottom +
+                MediaQuery.paddingOf(context).bottom),
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
