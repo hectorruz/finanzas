@@ -14,6 +14,7 @@ import '../../features/receipts/receipt_scan_screen.dart';
 import '../../features/reports/report_screen.dart';
 import '../../features/settings/dashboard_config_screen.dart';
 import '../../features/settings/nav_config_screen.dart';
+import '../../features/settings/payment_settings_screen.dart';
 import '../../features/settings/server_settings_screen.dart';
 import '../../features/settings/webapp_settings_screen.dart';
 import '../../features/sync/sync_review_screen.dart';
@@ -36,6 +37,7 @@ class Routes {
   static const syncReview = '/settings/sync/review';
   static const serverSettings = '/settings/sync/server';
   static const webapp = '/settings/webapp';
+  static const paymentReader = '/settings/payments';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -118,6 +120,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.webapp,
         builder: (_, __) => const WebappSettingsScreen(),
+      ),
+      GoRoute(
+        path: Routes.paymentReader,
+        builder: (_, __) => const PaymentSettingsScreen(),
       ),
     ],
   );

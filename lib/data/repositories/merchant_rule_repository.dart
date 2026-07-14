@@ -10,6 +10,14 @@ class MerchantRuleRepository {
   MerchantRuleRepository(this._isar);
   final Isar _isar;
 
+  /// Todas las reglas comercio → categoría, ordenadas por comercio (para la
+  /// pantalla de ajustes donde se listan/editan).
+  Future<List<MerchantRule>> all() async {
+    final rules = await _isar.merchantRules.where().findAll();
+    rules.sort((a, b) => a.merchant.compareTo(b.merchant));
+    return rules;
+  }
+
   /// Categoría recordada para [merchant], o null si no hay memoria.
   Future<int?> categoryFor(String merchant) async {
     final key = MerchantRule.normalize(merchant);

@@ -161,6 +161,16 @@ class SettingsScreen extends ConsumerWidget {
           const _SectionHeader('Webapp de escritorio'),
           const _WebappSection(),
           const Divider(),
+          const _SectionHeader('Automatización'),
+          ListTile(
+            leading: const Icon(Icons.notifications_active_outlined),
+            title: const Text('Leer notificaciones de pago'),
+            subtitle: const Text(
+                'Google Wallet y otras apps: crea el gasto solo al pagar'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(Routes.paymentReader),
+          ),
+          const Divider(),
           const _SectionHeader('Datos'),
           ListTile(
             leading: const Icon(Icons.summarize),

@@ -4,14 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:isar_community/isar.dart';
 
 import 'app.dart';
 import 'core/db/isar_provider.dart';
 import 'core/db/isar_service.dart';
+import 'core/platform/payment_notifications.dart';
 import 'data/repositories/recurring_repository.dart';
 import 'data/repositories/settings_repository.dart';
 import 'data/seed_service.dart';
 import 'features/notifications/notification_service.dart';
+import 'features/payments/notification_parser.dart';
+import 'features/payments/payment_ingest_service.dart';
 import 'features/quick_add/quick_add_popup.dart';
 import 'features/sync/sync_reminder_service.dart';
 
@@ -68,6 +72,10 @@ Future<void> main() async {
   unawaited(RecurringNotificationService(isar).rescheduleAll());
   unawaited(SyncReminderService(SettingsRepository(isar)).reschedule());
 
+  // Lectura de notificaciones de pago: sincroniza al servicio nativo las apps
+  // de origen y procesa lo capturado con la app cerrada. Sin bloquear.
+  unawaited(_setUpPayments(isar));
+
   runApp(
     ProviderScope(
       overrides: [
@@ -76,4 +84,23 @@ Future<void> main() async {
       child: const FinanzasApp(),
     ),
   );
+}
+
+/// Pone al día el filtro de apps de origen del servicio nativo (Wallet + las
+/// reglas del usuario) y procesa las notificaciones capturadas mientras la app
+/// estaba cerrada. Tolerante a plataformas sin el canal (no-Android/tests).
+Future<void> _setUpPayments(Isar isar) async {
+  try {
+    final s = await SettingsRepository(isar).getOrCreate();
+    if (!s.paymentReaderEnabled) return;
+    final packages = <String>{NotificationRule.walletPackage};
+    for (final raw in s.notificationAppRules) {
+      final r = NotificationRule.tryDecode(raw);
+      if (r != null) packages.add(r.package);
+    }
+    await PaymentNotifications.setSourcePackages(packages.toList());
+    await PaymentIngestService(isar).drainAndProcess();
+  } catch (_) {
+    // Plataforma sin el canal o error de arranque: se ignora.
+  }
 }

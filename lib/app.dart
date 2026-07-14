@@ -7,11 +7,13 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/db/isar_provider.dart';
 import 'core/notifications/local_notifications.dart';
 import 'core/platform/quick_tile.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/settings_repository.dart';
+import 'features/payments/payment_ingest_service.dart';
 import 'features/security/app_lock_gate.dart';
 import 'features/sync/net/sync_foreground_service.dart';
 import 'features/sync/sync_service.dart';
@@ -87,7 +89,12 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _tryBackgroundSync();
+    if (state == AppLifecycleState.resumed) {
+      _tryBackgroundSync();
+      // Procesa los pagos capturados mientras la app estuvo en segundo plano.
+      unawaited(
+          PaymentIngestService(ref.read(isarProvider)).drainAndProcess());
+    }
   }
 
   void _onConnectivityChanged(List<ConnectivityResult> results) {
@@ -110,7 +117,16 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
   }
 
   void _handleNotificationPayload(String? payload) {
-    if (payload == 'sync') ref.read(routerProvider).push(Routes.sync);
+    if (payload == null) return;
+    if (payload == 'sync') {
+      ref.read(routerProvider).push(Routes.sync);
+    } else if (payload.startsWith('payment:')) {
+      // Gasto detectado: abre su editor para revisar/editar/borrar.
+      final id = int.tryParse(payload.substring('payment:'.length));
+      if (id != null) {
+        ref.read(routerProvider).push(Routes.movementEditor, extra: id);
+      }
+    }
   }
 
   /// Mejor esfuerzo, silencioso: si hay un admin guardado y estamos en su

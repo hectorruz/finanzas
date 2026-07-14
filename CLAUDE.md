@@ -41,6 +41,7 @@ And `android/app/src/main/AndroidManifest.xml`:
 - Add `INTERNET` and `ACCESS_NETWORK_STATE` permissions (required by the LAN sync server/client — the *release* manifest by default only has `INTERNET` in `debug`/`profile`, so add it to `main`). Without `INTERNET` the sync server silently fails in release builds.
 - Add `POST_NOTIFICATIONS` and `RECEIVE_BOOT_COMPLETED` permissions and register the `flutter_local_notifications` boot receiver (`ScheduledNotificationBootReceiver` + `ScheduledNotificationReceiver`) so recurring-charge reminders survive a reboot. The app uses **inexact** scheduling, so `SCHEDULE_EXACT_ALARM` is NOT needed.
 - Add `WRITE_EXTERNAL_STORAGE` with `android:maxSdkVersion="29"` (required by `gal` to copy receipt photos into a gallery album on Android ≤ 9; API 30+ writes via MediaStore without any permission).
+- Declare the payment-notification reader `PaymentNotificationListenerService` with `android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"` and an `intent-filter` for `android.service.notification.NotificationListenerService` (`exported="true"`; the bind permission is held by the system, so no `uses-permission` is needed). The user grants access from the system "notification access" screen. See "Lectura de notificaciones de pago (fase 7)".
 - Add `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC` permissions and declare the `flutter_foreground_task` service (**do not rename it**) so the sync server can stay alive in the background. Include `android:stopWithTask="true"` so that swiping the app out of recents stops the service **and removes its persistent notification** (otherwise the notification is orphaned once the `HttpServer` — which lives in the main isolate — dies with the process). `stopWithTask` only fires on task removal, so the keep-alive still works for screen-off / background:
   ```xml
   <service
@@ -350,6 +351,55 @@ El OCR es **on-device** (ML Kit Text Recognition) y la pantalla de escaneo es la
   el guardado); la copia persistente de la app en `receipts/` sigue siendo la
   fuente de verdad. El detalle del ticket tiene además un botón "Guardar en
   galería" para volcar tickets antiguos al álbum bajo demanda.
+
+### Lectura de notificaciones de pago (fase 7)
+
+Lee las notificaciones de pago del móvil y **crea el gasto automáticamente**
+(`lib/features/payments/`). Google Wallet
+(`com.google.android.apps.walletnfcrel`) funciona sin configurar; además se
+pueden añadir **otras apps** definiendo *dónde buscar* cada dato con regex por
+campo. Todo son ajustes **locales** de este dispositivo (no se sincronizan ni se
+respaldan): `AppSettings.paymentReaderEnabled`, `paymentDefaultAccountId`,
+`paymentProcessedHashes`, `notificationAppRules`, `cardAccountRules`.
+
+**Nativo (Android):** `PaymentNotificationListenerService.kt` es un
+`NotificationListenerService` que, para los paquetes configurados, bufferiza
+`título/texto/postedAt/paquete` en `SharedPreferences` (lista JSON, tope 200).
+Vive fuera del engine de Flutter → captura pagos **aunque la app esté cerrada**.
+`MainActivity` expone el canal `com.example.finanzas/payments`
+(`isPermissionGranted`, `openListenerSettings`, `drainBuffer`, `peekBuffer`,
+`setSourcePackages`); el puente Dart es
+`lib/core/platform/payment_notifications.dart` (tolerante a
+`MissingPluginException` en tests/no-Android). Los paquetes de origen se
+**derivan** de las reglas (Wallet + `notificationAppRules`).
+
+**Parser puro (`notification_parser.dart`, testeado):** `NotificationRule`
+(paquete + regex opcionales `merchantRegex`/`amountRegex`/`cardRegex` +
+`merchantFromTitle`) y `applyRule`/`parseWithRules` → `ParsedPayment`
+(importe en céntimos, comercio, **tarjeta** `••NNNN`, fecha). Google Wallet es
+una regla built-in implícita (`NotificationRule.wallet()`, tienda en el título +
+heurísticas genéricas de importe/tarjeta), **no** se guarda en ajustes. Un regex
+vacío o inválido degrada a la heurística; un `amountRegex` que no casa marca "no
+es un pago". `known_supermarkets.dart` (Lidl/Mercadona/Dia → "Alimentación") es
+solo un *fallback*.
+
+**Ingesta (`payment_ingest_service.dart`):** `drainAndProcess()` drena el buffer,
+parsea con las reglas, deduplica por huella (`importe|comercio|día`) y con
+`findPossibleDuplicate`, y crea el gasto. **Categoría** (prioridad):
+1) `MerchantRule` de usuario (memoria **compartida con el OCR de tickets**);
+2) supermercado conocido; 3) `ReceiptParser.suggestCategory`. **Cuenta**:
+1) regla `cardAccountRules` que case la tarjeta; 2) `paymentDefaultAccountId`;
+3) primera cuenta activa. La tarjeta se anota en `TransactionModel.note`. Avisa
+con una notificación tocable (payload `payment:<txnId>` → abre el editor del
+movimiento). Se llama en `main()` (`_setUpPayments`, sin bloquear) y al
+reanudar la app (`app.dart`).
+
+**Ajustes** (`payment_settings_screen.dart`, Ajustes → "Automatización"): toggle,
+permiso de acceso a notificaciones, cuenta por defecto, editor de **apps y
+reglas** (regex por campo + botón "Probar contra capturadas" que aplica la regla
+en vivo sobre `peekBuffer`), editor **tienda → categoría** (sobre `MerchantRule`,
+compartido con el OCR) y **tarjeta → cuenta** (`cardAccountRules`), más
+"Procesar ahora" y el visor de capturadas.
 
 ### Privacy mode (hide amounts)
 

@@ -166,6 +166,32 @@ class AppSettings {
   /// 1-7). Vacío = todos los días.
   List<int> syncReminderWeekdays = [];
 
+  // --- Lectura de notificaciones de pago (Google Wallet + apps personalizadas).
+  //     Local: no se sincroniza ni se respalda (es permiso/preferencia de este
+  //     dispositivo) ---
+
+  /// Si se leen las notificaciones de pago para crear el gasto automáticamente.
+  bool paymentReaderEnabled = false;
+
+  /// Cuenta a la que se imputan los gastos detectados por defecto. `0` = primera
+  /// cuenta activa. Una regla tarjeta → cuenta que case tiene prioridad.
+  int paymentDefaultAccountId = 0;
+
+  /// Huellas de las notificaciones ya procesadas (importe|comercio|día), para no
+  /// crear dos veces el mismo gasto si una notificación se reentrega. Se poda a
+  /// las últimas ~300.
+  List<String> paymentProcessedHashes = [];
+
+  /// Reglas de lectura de apps **extra** (además de Google Wallet, que es una
+  /// regla built-in implícita), cada una serializada en JSON. Ver
+  /// `NotificationRule`. Los paquetes de origen del servicio nativo se derivan
+  /// de aquí (+ el de Wallet).
+  List<String> notificationAppRules = [];
+
+  /// Reglas tarjeta → cuenta, cada una serializada en JSON (`{card, accountId}`).
+  /// Ver `CardAccountRule`.
+  List<String> cardAccountRules = [];
+
   // --- Migraciones ---
 
   /// Versión del esquema de datos ya aplicada en esta BD. La usa el migrador
