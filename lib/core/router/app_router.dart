@@ -12,11 +12,9 @@ import '../../features/movements/recurring_editor_screen.dart';
 import '../../features/movements/recurring_screen.dart';
 import '../../features/receipts/receipt_scan_screen.dart';
 import '../../features/reports/report_screen.dart';
-import '../../features/settings/backup_settings_screen.dart';
 import '../../features/settings/dashboard_config_screen.dart';
 import '../../features/settings/nav_config_screen.dart';
 import '../../features/settings/server_settings_screen.dart';
-import '../../features/settings/wallet_settings_screen.dart';
 import '../../features/settings/webapp_settings_screen.dart';
 import '../../features/sync/sync_review_screen.dart';
 import '../../features/sync/sync_screen.dart';
@@ -38,8 +36,6 @@ class Routes {
   static const syncReview = '/settings/sync/review';
   static const serverSettings = '/settings/sync/server';
   static const webapp = '/settings/webapp';
-  static const backups = '/settings/backups';
-  static const walletReader = '/settings/wallet';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -122,14 +118,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.webapp,
         builder: (_, __) => const WebappSettingsScreen(),
-      ),
-      GoRoute(
-        path: Routes.backups,
-        builder: (_, __) => const BackupSettingsScreen(),
-      ),
-      GoRoute(
-        path: Routes.walletReader,
-        builder: (_, __) => const WalletSettingsScreen(),
       ),
     ],
   );

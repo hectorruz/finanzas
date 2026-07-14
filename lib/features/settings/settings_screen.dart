@@ -161,15 +161,6 @@ class SettingsScreen extends ConsumerWidget {
           const _SectionHeader('Webapp de escritorio'),
           const _WebappSection(),
           const Divider(),
-          const _SectionHeader('Automatización'),
-          ListTile(
-            leading: const Icon(Icons.account_balance_wallet_outlined),
-            title: const Text('Leer notificaciones de Google Wallet'),
-            subtitle: const Text('Crea el gasto solo al pagar con el móvil'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push(Routes.walletReader),
-          ),
-          const Divider(),
           const _SectionHeader('Datos'),
           ListTile(
             leading: const Icon(Icons.summarize),
@@ -188,13 +179,6 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Importar datos'),
             subtitle: const Text('Reemplaza los datos actuales'),
             onTap: () => _import(context, ref),
-          ),
-          ListTile(
-            leading: const Icon(Icons.backup_outlined),
-            title: const Text('Copias de seguridad automáticas'),
-            subtitle: const Text('Programa copias diarias, semanales o mensuales'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push(Routes.backups),
           ),
           ListTile(
             leading: Icon(Icons.delete_forever,

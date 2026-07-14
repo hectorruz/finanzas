@@ -89,19 +89,6 @@
             android:foregroundServiceType="dataSync"
             android:stopWithTask="true"
             android:exported="false" />
-        <!-- Lector de notificaciones de Google Wallet (crea el gasto solo). Lo
-             enlaza el sistema tras conceder el usuario "acceso a notificaciones";
-             la BIND_NOTIFICATION_LISTENER_SERVICE la ostenta el sistema, no la
-             app. Mismo patrón que el TileService de arriba (exported + BIND). -->
-        <service
-            android:name=".WalletNotificationListenerService"
-            android:exported="true"
-            android:label="Finanzas · Wallet"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

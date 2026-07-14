@@ -7,17 +7,14 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'core/db/isar_provider.dart';
 import 'core/notifications/local_notifications.dart';
 import 'core/platform/quick_tile.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/settings_repository.dart';
-import 'features/backup/backup_scheduler_service.dart';
 import 'features/security/app_lock_gate.dart';
 import 'features/sync/net/sync_foreground_service.dart';
 import 'features/sync/sync_service.dart';
-import 'features/wallet/wallet_ingest_service.dart';
 
 class FinanzasApp extends ConsumerStatefulWidget {
   const FinanzasApp({super.key});
@@ -90,14 +87,7 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _tryBackgroundSync();
-      // Red de seguridad: si tocaba una copia y el worker en segundo plano no
-      // llegó a hacerla (Doze / restricciones del fabricante), se hace al volver.
-      unawaited(BackupSchedulerService(ref.read(isarProvider)).runIfDue());
-      // Procesa los pagos de Wallet capturados mientras la app estuvo cerrada.
-      unawaited(WalletIngestService(ref.read(isarProvider)).drainAndProcess());
-    }
+    if (state == AppLifecycleState.resumed) _tryBackgroundSync();
   }
 
   void _onConnectivityChanged(List<ConnectivityResult> results) {
@@ -120,16 +110,7 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
   }
 
   void _handleNotificationPayload(String? payload) {
-    if (payload == null) return;
-    if (payload == 'sync') {
-      ref.read(routerProvider).push(Routes.sync);
-    } else if (payload.startsWith('wallet:')) {
-      // Gasto detectado por Wallet: abre su editor para revisar/editar/borrar.
-      final id = int.tryParse(payload.substring('wallet:'.length));
-      if (id != null) {
-        ref.read(routerProvider).push(Routes.movementEditor, extra: id);
-      }
-    }
+    if (payload == 'sync') ref.read(routerProvider).push(Routes.sync);
   }
 
   /// Mejor esfuerzo, silencioso: si hay un admin guardado y estamos en su

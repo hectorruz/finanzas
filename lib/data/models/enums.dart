@@ -13,12 +13,6 @@ enum CategoryKind { income, expense }
 
 enum RecurringFrequency { daily, weekly, monthly, yearly }
 
-/// Frecuencia de las copias de seguridad automáticas.
-enum BackupFrequency { daily, weekly, monthly }
-
-/// Destino de las copias de seguridad automáticas.
-enum BackupDestination { localFile, googleDrive, nextcloud }
-
 enum AppModule { goals }
 
 /// Secciones disponibles en la barra inferior de navegación.
