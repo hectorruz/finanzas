@@ -11,3 +11,9 @@
 -dontwarn com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 -dontwarn com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions$Builder
 -dontwarn com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
+
+# WorkManager/Room: R8 (modo full) elimina el constructor sin argumentos de las
+# implementaciones que Room genera (p. ej. WorkDatabase_Impl), instanciadas por
+# reflexión → NoSuchMethodException al arrancar el proceso. Blindaje por si algún
+# consumidor de androidx.work vuelve a entrar en el build.
+-keep class * extends androidx.room.RoomDatabase { <init>(); }
