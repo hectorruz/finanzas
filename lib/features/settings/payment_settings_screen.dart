@@ -15,17 +15,15 @@ import '../../data/repositories/settings_repository.dart';
 import '../payments/card_account_rule.dart';
 import '../payments/notification_parser.dart';
 import '../payments/payment_ingest_service.dart';
+import '../payments/payment_reader_sync.dart';
+import '../payments/regex_help.dart';
+import 'payment_rules_help_screen.dart';
 
-/// Deriva los paquetes de origen (Wallet + las reglas de apps) y los sincroniza
-/// con el servicio nativo. Se llama tras cualquier cambio en las reglas.
-Future<void> _syncSources(SettingsRepository repo) async {
-  final s = await repo.getOrCreate();
-  final packages = <String>{NotificationRule.walletPackage};
-  for (final raw in s.notificationAppRules) {
-    final r = NotificationRule.tryDecode(raw);
-    if (r != null) packages.add(r.package);
-  }
-  await PaymentNotifications.setSourcePackages(packages.toList());
+/// Abre el tutorial de reglas (guía + recetario de patrones).
+void openRulesHelp(BuildContext context) {
+  Navigator.of(context).push(MaterialPageRoute(
+    builder: (_) => const PaymentRulesHelpScreen(),
+  ));
 }
 
 /// Reglas de apps a mostrar: la de Google Wallet (built-in, si no hay override
@@ -87,7 +85,7 @@ class _PaymentSettingsScreenState extends ConsumerState<PaymentSettingsScreen>
 
   Future<void> _update(void Function(AppSettings) mutate) async {
     await _repo.update(mutate);
-    await _syncSources(_repo);
+    await syncPaymentReaderToNative(_repo);
   }
 
   @override
@@ -153,6 +151,15 @@ class _PaymentSettingsScreenState extends ConsumerState<PaymentSettingsScreen>
           ),
           const Divider(),
           const _Header('Reglas'),
+          ListTile(
+            enabled: enabled,
+            leading: const Icon(Icons.school_outlined),
+            title: const Text('Cómo crear una regla'),
+            subtitle: const Text(
+                'Guía con ejemplos y patrones listos para copiar'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: enabled ? () => openRulesHelp(context) : null,
+          ),
           ListTile(
             enabled: enabled,
             leading: const Icon(Icons.apps),
@@ -296,6 +303,17 @@ class _AppRulesScreen extends ConsumerWidget {
                 'Google Wallet ya funciona sin configurar. Añade otras apps '
                 'diciendo el paquete y dónde buscar cada dato (regex).'),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.school_outlined),
+                label: const Text('Cómo crear una regla'),
+                onPressed: () => openRulesHelp(context),
+              ),
+            ),
+          ),
           for (final rule in rules)
             ListTile(
               leading: Icon(rule.package == NotificationRule.walletPackage
@@ -334,7 +352,7 @@ class _AppRulesScreen extends ConsumerWidget {
           if (NotificationRule.tryDecode(raw)?.package != package) raw,
       ];
     });
-    await _syncSources(repo);
+    await syncPaymentReaderToNative(repo);
   }
 }
 
@@ -411,7 +429,7 @@ class _RuleEditorScreenState extends ConsumerState<_RuleEditorScreen> {
       }
       s.notificationAppRules = list;
     });
-    await _syncSources(repo);
+    await syncPaymentReaderToNative(repo);
     if (mounted) Navigator.pop(context);
   }
 
@@ -449,7 +467,18 @@ class _RuleEditorScreenState extends ConsumerState<_RuleEditorScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          Text('Dónde buscar', style: Theme.of(context).textTheme.titleSmall),
+          Row(
+            children: [
+              Text('Dónde buscar',
+                  style: Theme.of(context).textTheme.titleSmall),
+              const Spacer(),
+              TextButton.icon(
+                icon: const Icon(Icons.school_outlined, size: 18),
+                label: const Text('Cómo se escribe'),
+                onPressed: () => openRulesHelp(context),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -478,7 +507,8 @@ class _RuleEditorScreenState extends ConsumerState<_RuleEditorScreen> {
           const SizedBox(height: 8),
           const Text(
             'Si dejas un regex vacío se usa la detección automática. El grupo '
-            '(entre paréntesis) es el valor que se extrae.',
+            '(entre paréntesis) es el valor que se extrae. Se busca en el '
+            'título y el texto juntos.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 16),
@@ -493,7 +523,10 @@ class _RuleEditorScreenState extends ConsumerState<_RuleEditorScreen> {
   }
 }
 
-class _RegexField extends StatelessWidget {
+/// Campo de regex con validación en vivo: sin esto, un patrón mal escrito se
+/// degrada a la detección automática en silencio (ver `regexError`) y parece que
+/// funciona cuando en realidad la regla no se está aplicando.
+class _RegexField extends StatefulWidget {
   const _RegexField(
       {required this.controller, required this.label, required this.hint});
   final TextEditingController controller;
@@ -501,16 +534,24 @@ class _RegexField extends StatelessWidget {
   final String hint;
 
   @override
+  State<_RegexField> createState() => _RegexFieldState();
+}
+
+class _RegexFieldState extends State<_RegexField> {
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: TextField(
-        controller: controller,
+        controller: widget.controller,
         style: const TextStyle(fontFamily: 'monospace'),
+        onChanged: (_) => setState(() {}),
         decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
+          labelText: widget.label,
+          hintText: widget.hint,
           border: const OutlineInputBorder(),
+          errorText: regexError(widget.controller.text),
+          errorMaxLines: 3,
         ),
       ),
     );
@@ -561,12 +602,28 @@ Future<void> showCapturedSheet(BuildContext context,
                     text: c.text,
                     postedAt: c.postedAt,
                     rules: const []);
+            // El probador aplica la regla a cualquier notificación, sea de la
+            // app que sea: sin ver el paquete, probar contra la notificación
+            // equivocada parecería un fallo del patrón.
+            final otherApp = rule != null &&
+                rule.package.isNotEmpty &&
+                rule.package != c.package;
             return ListTile(
               title: Text(c.title.isEmpty ? '(sin título)' : c.title),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(c.text),
+                  const SizedBox(height: 2),
+                  Text(
+                    otherApp ? '${c.package} (otra app)' : c.package,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                          color: otherApp
+                              ? Theme.of(context).colorScheme.error
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
                   const SizedBox(height: 2),
                   Text(
                     parsed == null
@@ -584,6 +641,7 @@ Future<void> showCapturedSheet(BuildContext context,
               trailing: Text(df.format(c.postedAt),
                   style: Theme.of(context).textTheme.bodySmall),
               isThreeLine: true,
+              subtitleTextStyle: Theme.of(context).textTheme.bodyMedium,
             );
           },
         );

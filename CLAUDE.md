@@ -391,8 +391,43 @@ parsea con las reglas, deduplica por huella (`importe|comercio|día`) y con
 1) regla `cardAccountRules` que case la tarjeta; 2) `paymentDefaultAccountId`;
 3) primera cuenta activa. La tarjeta se anota en `TransactionModel.note`. Avisa
 con una notificación tocable (payload `payment:<txnId>` → abre el editor del
-movimiento). Se llama en `main()` (`_setUpPayments`, sin bloquear) y al
-reanudar la app (`app.dart`).
+movimiento). Se llama desde el **engine headless** (ver abajo), en `main()`
+(`_setUpPayments`, sin bloquear) y al reanudar la app (`app.dart`).
+
+**Engine headless (el gasto se crea con la app cerrada):** el listener nativo
+solo bufferiza, así que sin esto el gasto no existiría hasta que alguien abriera
+la app. `PaymentIngestEngine.kt` arranca, desde `onNotificationPosted`, un
+`FlutterEngine` **sin UI** que ejecuta el entrypoint `paymentIngestMain`
+(`main.dart`, `@pragma('vm:entry-point')`, sin `runApp`) y lo destruye cuando
+Dart avisa por el canal `com.example.finanzas/payment_ingest` (`finished`), con
+timeout de 60 s de red de seguridad, debounce de 1,2 s (Wallet republica la misma
+notificación) y un reintento si entró algo entre el drenado y el apagado. No
+arranca ningún servicio: el sistema ya tiene enlazado el listener, así que las
+restricciones de background-start de Android 12+ no aplican. Cuatro cosas que no
+son obvias:
+
+- **El canal se registra en los dos engines** (`PaymentsChannel.kt`, compartido
+  con `MainActivity`). Si faltara en el headless, `drainBuffer()` daría
+  `MissingPluginException`, el puente Dart lo degradaría a lista vacía y no se
+  procesaría nada **sin decirlo**.
+- **`FlutterEngine(Context)` ya registra los plugins solo**: no hay que llamar a
+  `GeneratedPluginRegistrant`. Isar no lo necesita (su plugin Android es un
+  no-op); `path_provider` y `flutter_local_notifications` sí, y funcionan.
+- **Pedir el permiso de notificaciones revienta sin Activity** (el plugin usa
+  `mainActivity` sin comprobar null): por eso `local_notifications.dart` aísla esa
+  llamada en su propio `try/catch`. Sin eso, el gasto se crearía sin avisar.
+- **El listener debe seguir en el proceso principal**: nunca le pongas
+  `android:process`. La ingesta abre la misma instancia de Isar que la UI, e Isar
+  admite varios isolates pero **no** varios procesos (se corrompería).
+
+**Gate tri-estado:** `paymentReaderEnabled` vive en Isar, que Kotlin no ve con la
+app cerrada, así que se **espeja** a `SharedPreferences` (`KEY_ENABLED`) desde
+`syncPaymentReaderToNative` (`payment_reader_sync.dart`), único sitio que calcula
+los paquetes y espeja el flag — llamado en `main()` y tras cada cambio de ajustes.
+Ausente = versión recién actualizada que aún no se ha abierto: bufferiza pero no
+arranca el engine (comportamiento de siempre, se autocura al abrir); `false` = ni
+bufferiza, y limpia el buffer (si no, se llenaría hasta 200 y al reactivar
+entrarían de golpe pagos viejos).
 
 **Ajustes** (`payment_settings_screen.dart`, Ajustes → "Automatización"): toggle,
 permiso de acceso a notificaciones, cuenta por defecto, editor de **apps y
@@ -400,6 +435,19 @@ reglas** (regex por campo + botón "Probar contra capturadas" que aplica la regl
 en vivo sobre `peekBuffer`), editor **tienda → categoría** (sobre `MerchantRule`,
 compartido con el OCR) y **tarjeta → cuenta** (`cardAccountRules`), más
 "Procesar ahora" y el visor de capturadas.
+
+**Tutorial de reglas** (`payment_rules_help_screen.dart`, enlazado desde los
+ajustes, la lista de apps y el editor): guía con anatomía de una notificación,
+recetario de patrones copiables y las trampas del parser. La lógica es pura y
+está testeada (`regex_help.dart`: `regexError` + `kRegexRecipes`); el editor valida
+el regex en vivo con `regexError` porque el parser **degrada un patrón inválido a
+la heurística en silencio** (`_compile` se traga la `FormatException`), lo que lo
+hace indistinguible de dejar el campo vacío.
+
+⚠️ **Al probar en un móvil, no uses `am force-stop`**: deja el listener sin enlazar
+hasta reiniciar o re-conceder el permiso, y parece un fallo de la feature. Usa
+`am kill`. Los gestores de batería agresivos de algunos fabricantes pueden causar
+lo mismo; es inherente a la plataforma.
 
 ### Privacy mode (hide amounts)
 

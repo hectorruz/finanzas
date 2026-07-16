@@ -57,6 +57,20 @@ class PaymentNotifications {
     }
   }
 
+  /// Espeja en el servicio nativo si el lector está activo. `AppSettings` vive
+  /// en Isar, que el servicio no puede leer con la app cerrada: este flag es el
+  /// único gate que decide si un pago arranca el engine de ingesta. Ver
+  /// `syncPaymentReaderToNative`, que es quien debe llamar aquí.
+  static Future<void> setReaderEnabled(bool enabled) async {
+    try {
+      await _channel.invokeMethod<void>('setReaderEnabled', enabled);
+    } on PlatformException {
+      // ignorado
+    } on MissingPluginException {
+      // ignorado
+    }
+  }
+
   /// Vacía y devuelve el buffer nativo de notificaciones capturadas.
   static Future<List<CapturedNotification>> drainBuffer() =>
       _readBuffer('drainBuffer');

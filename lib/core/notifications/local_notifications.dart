@@ -44,10 +44,18 @@ Future<bool> _doInit() async {
           onNotificationTap?.call(details.payload),
     );
     if (ok == false) return false;
-    await localNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+    try {
+      await localNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+    } catch (_) {
+      // Pedir el permiso necesita una Activity: el plugin usa `mainActivity`
+      // sin comprobar null, así que en un engine sin UI (`paymentIngestMain`)
+      // lanza. No es fatal —`show()` solo usa el contexto de aplicación—, pero
+      // si dejamos escapar el error se cachea `_initFuture = false` y el
+      // proceso entero se queda sin notificaciones.
+    }
     return true;
   } catch (_) {
     return false;
