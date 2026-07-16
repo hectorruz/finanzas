@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:isar_community/isar.dart';
 
@@ -47,9 +48,14 @@ class PaymentIngestService {
   /// No hace nada si el lector está desactivado.
   Future<int> drainAndProcess() async {
     final s = await _settings.getOrCreate();
-    if (!s.paymentReaderEnabled) return 0;
+    if (!s.paymentReaderEnabled) {
+      debugPrint('PaymentIngest: lector desactivado en los ajustes');
+      return 0;
+    }
 
     final captured = await PaymentNotifications.drainBuffer();
+    // Solo recuentos: el contenido de un pago no tiene por qué acabar en el log.
+    debugPrint('PaymentIngest: drenadas ${captured.length} notificación(es)');
     if (captured.isEmpty) return 0;
 
     final rules = _decodeRules(s.notificationAppRules);
@@ -65,11 +71,21 @@ class PaymentIngestService {
         postedAt: n.postedAt,
         rules: rules,
       );
-      if (parsed == null) continue;
+      if (parsed == null) {
+        debugPrint('PaymentIngest: ${n.package} no parece un pago');
+        continue;
+      }
       final hash = _hashOf(parsed);
-      if (processed.contains(hash)) continue;
+      if (processed.contains(hash)) {
+        debugPrint('PaymentIngest: pago ya procesado antes (huella repetida)');
+        continue;
+      }
       processed.add(hash);
-      if (await _ingest(parsed, s, cardRules)) created++;
+      if (await _ingest(parsed, s, cardRules)) {
+        created++;
+      } else {
+        debugPrint('PaymentIngest: pago descartado (duplicado o sin cuenta)');
+      }
     }
 
     // Poda las huellas a las últimas 300 para que no crezcan sin límite.

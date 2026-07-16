@@ -42,8 +42,11 @@ object PaymentsChannel {
                     "drainBuffer" -> result.success(
                         PaymentNotificationListenerService.readBuffer(app, clear = true)
                     )
+                    // El probador de reglas lee el historial reciente, no lo
+                    // pendiente: el engine de ingesta drena lo pendiente un
+                    // segundo después de cada pago y saldría siempre vacío.
                     "peekBuffer" -> result.success(
-                        PaymentNotificationListenerService.readBuffer(app, clear = false)
+                        PaymentNotificationListenerService.readRecent(app)
                     )
                     "setSourcePackages" -> {
                         @Suppress("UNCHECKED_CAST")

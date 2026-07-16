@@ -580,8 +580,8 @@ Future<void> showCapturedSheet(BuildContext context,
               padding: EdgeInsets.all(32),
               child: Text(
                   'Sin notificaciones capturadas todavía.\nPaga con la app y '
-                  'vuelve a mirar aquí (la app debe estar en la lista de '
-                  'reglas para capturarse).',
+                  'vuelve a mirar aquí. Ojo: solo se capturan las apps que '
+                  'estén guardadas en la lista de reglas.',
                   textAlign: TextAlign.center),
             ),
           );

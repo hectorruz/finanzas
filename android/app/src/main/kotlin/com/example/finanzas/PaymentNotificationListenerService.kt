@@ -3,6 +3,7 @@ package com.example.finanzas
 import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -56,20 +57,14 @@ class PaymentNotificationListenerService : NotificationListenerService() {
         }
 
         synchronized(LOCK) {
-            val arr = try {
-                JSONArray(prefs.getString(KEY_BUFFER, "[]"))
-            } catch (e: Exception) {
-                JSONArray()
-            }
-            arr.put(item)
-            val capped = if (arr.length() > MAX) {
-                JSONArray().also { trimmed ->
-                    for (i in (arr.length() - MAX) until arr.length()) trimmed.put(arr.get(i))
-                }
-            } else {
-                arr
-            }
-            prefs.edit().putString(KEY_BUFFER, capped.toString()).apply()
+            val pending = append(prefs.getString(KEY_BUFFER, "[]"), item, MAX)
+            val recent = append(prefs.getString(KEY_RECENT, "[]"), item, MAX_RECENT)
+            prefs.edit()
+                .putString(KEY_BUFFER, pending.toString())
+                .putString(KEY_RECENT, recent.toString())
+                .apply()
+            // Solo recuentos: nunca el contenido (importes, comercios).
+            Log.d(TAG, "capturada de $pkg (pendientes=${pending.length()}, lector=$enabled)")
         }
 
         // Lector confirmado activo: procesa el pago ya, aunque la app esté
@@ -78,21 +73,56 @@ class PaymentNotificationListenerService : NotificationListenerService() {
     }
 
     companion object {
+        private const val TAG = "PaymentIngest"
         const val PREFS = "payment_reader"
+
+        /** Pendientes de procesar: se vacía en cada drenaje. */
         const val KEY_BUFFER = "buffer"
+
+        /**
+         * Historial reciente para el probador de reglas de los ajustes. Va
+         * aparte del pendiente **a propósito**: el engine de ingesta drena el
+         * pendiente un segundo después de cada pago, así que si el probador
+         * leyera de ahí saldría siempre vacío y no habría forma de depurar una
+         * regla. Solo lo recorta el tope.
+         */
+        const val KEY_RECENT = "recent"
         const val KEY_SOURCES = "sources"
         const val KEY_ENABLED = "enabled"
         const val MAX = 200
+        const val MAX_RECENT = 50
         val DEFAULT_SOURCES: Set<String> = setOf("com.google.android.apps.walletnfcrel")
         private val LOCK = Any()
 
-        /** Devuelve el buffer JSON y, si [clear], lo vacía. Usado por el puente. */
+        /** Añade [item] al JSON [raw] recortando por la cola a [max] elementos. */
+        private fun append(raw: String?, item: JSONObject, max: Int): JSONArray {
+            val arr = try {
+                JSONArray(raw ?: "[]")
+            } catch (e: Exception) {
+                JSONArray()
+            }
+            arr.put(item)
+            if (arr.length() <= max) return arr
+            return JSONArray().also { trimmed ->
+                for (i in (arr.length() - max) until arr.length()) trimmed.put(arr.get(i))
+            }
+        }
+
+        /** Devuelve lo pendiente de procesar y, si [clear], lo vacía. */
         fun readBuffer(context: Context, clear: Boolean): String {
             val prefs = context.getSharedPreferences(PREFS, MODE_PRIVATE)
             synchronized(LOCK) {
                 val data = prefs.getString(KEY_BUFFER, "[]") ?: "[]"
                 if (clear) prefs.edit().putString(KEY_BUFFER, "[]").apply()
                 return data
+            }
+        }
+
+        /** Historial reciente para el probador de reglas (no se vacía al drenar). */
+        fun readRecent(context: Context): String {
+            val prefs = context.getSharedPreferences(PREFS, MODE_PRIVATE)
+            synchronized(LOCK) {
+                return prefs.getString(KEY_RECENT, "[]") ?: "[]"
             }
         }
 
@@ -112,7 +142,11 @@ class PaymentNotificationListenerService : NotificationListenerService() {
             val prefs = context.getSharedPreferences(PREFS, MODE_PRIVATE)
             synchronized(LOCK) {
                 val editor = prefs.edit().putBoolean(KEY_ENABLED, enabled)
-                if (!enabled) editor.putString(KEY_BUFFER, "[]")
+                if (!enabled) {
+                    editor.putString(KEY_BUFFER, "[]")
+                    // Al apagar el lector no dejamos rastro de notificaciones ajenas.
+                    editor.putString(KEY_RECENT, "[]")
+                }
                 editor.apply()
             }
         }

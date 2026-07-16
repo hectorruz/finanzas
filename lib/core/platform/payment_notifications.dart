@@ -71,11 +71,14 @@ class PaymentNotifications {
     }
   }
 
-  /// Vacía y devuelve el buffer nativo de notificaciones capturadas.
+  /// Vacía y devuelve las notificaciones pendientes de procesar.
   static Future<List<CapturedNotification>> drainBuffer() =>
       _readBuffer('drainBuffer');
 
-  /// Devuelve el buffer **sin** vaciarlo (para el visor/probador de reglas).
+  /// Historial reciente para el visor/probador de reglas. **No** es lo mismo que
+  /// lo pendiente: el engine de ingesta drena lo pendiente un segundo después de
+  /// cada pago, así que esto lee una lista aparte que sobrevive al drenaje (si
+  /// no, el probador saldría siempre vacío).
   static Future<List<CapturedNotification>> peekBuffer() =>
       _readBuffer('peekBuffer');
 

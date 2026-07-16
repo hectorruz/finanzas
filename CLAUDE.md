@@ -420,6 +420,13 @@ son obvias:
   `android:process`. La ingesta abre la misma instancia de Isar que la UI, e Isar
   admite varios isolates pero **no** varios procesos (se corrompería).
 
+**Pendientes vs. historial (dos buffers):** el nativo guarda cada captura en dos
+listas. `KEY_BUFFER` son los **pendientes**, que el engine drena (y vacía) un
+segundo después de cada pago. `KEY_RECENT` (tope 50) es el **historial** que lee
+`peekBuffer` para el visor y el probador de reglas de los ajustes: si el probador
+leyera de los pendientes saldría **siempre vacío** —el engine ya los drenó— y no
+habría forma de depurar una regla. Apagar el lector limpia los dos.
+
 **Gate tri-estado:** `paymentReaderEnabled` vive en Isar, que Kotlin no ve con la
 app cerrada, así que se **espeja** a `SharedPreferences` (`KEY_ENABLED`) desde
 `syncPaymentReaderToNative` (`payment_reader_sync.dart`), único sitio que calcula
