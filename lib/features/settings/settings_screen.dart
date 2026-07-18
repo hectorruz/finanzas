@@ -185,6 +185,13 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => _export(context, ref),
           ),
           ListTile(
+            leading: const Icon(Icons.cloud_upload_outlined),
+            title: const Text('Copias en la nube'),
+            subtitle: const Text('Nextcloud o Google Drive, automáticas'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(Routes.backup),
+          ),
+          ListTile(
             leading: const Icon(Icons.download),
             title: const Text('Importar datos'),
             subtitle: const Text('Reemplaza los datos actuales'),

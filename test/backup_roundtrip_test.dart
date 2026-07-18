@@ -4,6 +4,7 @@ import 'package:finanzas/data/backup_service.dart';
 import 'package:finanzas/data/models/account.dart';
 import 'package:finanzas/data/models/transaction.dart';
 import 'package:finanzas/data/repositories/account_repository.dart';
+import 'package:finanzas/data/repositories/settings_repository.dart';
 import 'package:finanzas/data/repositories/transaction_repository.dart';
 import 'package:isar_community/isar.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,6 +55,46 @@ void main() {
     final restoredDeleted = await isar.transactions.get(delId);
     expect(restoredDeleted!.uuid, originalDeleted!.uuid);
     expect(restoredDeleted.deletedAt, isNotNull);
+  });
+
+  test('importar NO borra los ajustes locales que no viajan en el backup',
+      () async {
+    // Estado local del dispositivo: identidad de sync, lector de pagos,
+    // credenciales de las copias en la nube. Nada de esto se exporta.
+    final settings = SettingsRepository(isar);
+    await settings.update((s) {
+      s.syncDeviceId = 'device-abc-123';
+      s.syncFixedPin = '123456';
+      s.paymentReaderEnabled = true;
+      s.notificationAppRules = ['{"package":"com.banco"}'];
+      s.backupEnabled = true;
+      s.backupProviderConfigs = ['{"provider":"nextcloud","password":"secreto"}'];
+      // Un ajuste que SÍ se exporta, para confirmar que la importación lo aplica.
+      s.hideAmounts = true;
+    });
+
+    // Un backup ajeno (otro dispositivo) con hideAmounts en false y sin ninguno
+    // de los campos locales.
+    final foreign = jsonEncode({
+      'version': 2,
+      'accounts': <dynamic>[],
+      'transactions': <dynamic>[],
+      'settings': {'hideAmounts': false, 'themeMode': 'dark'},
+    });
+    await backup.importJson(foreign);
+
+    final s = await settings.getOrCreate();
+    // Los locales sobreviven.
+    expect(s.syncDeviceId, 'device-abc-123');
+    expect(s.syncFixedPin, '123456');
+    expect(s.paymentReaderEnabled, isTrue);
+    expect(s.notificationAppRules, ['{"package":"com.banco"}']);
+    expect(s.backupEnabled, isTrue);
+    expect(s.backupProviderConfigs,
+        ['{"provider":"nextcloud","password":"secreto"}']);
+    // Los exportados sí se aplican desde el backup.
+    expect(s.hideAmounts, isFalse);
+    expect(s.themeMode, 'dark');
   });
 
   test('un backup v1 sin uuid se importa generando uuids', () async {

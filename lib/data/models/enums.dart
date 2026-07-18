@@ -18,6 +18,17 @@ enum AppModule { goals }
 /// Secciones disponibles en la barra inferior de navegación.
 enum NavSection { dashboard, movements, receipts, goals, settings }
 
+/// Cada cuánto se sube una copia de seguridad a la nube.
+///
+/// No hay valor `quarterly` a propósito: "trimestral" es `monthly` con
+/// `AppSettings.backupEvery == 3`, igual que [RecurringFrequency] se combina con
+/// `RecurringRule.interval`. Dos representaciones del mismo periodo
+/// (`quarterly×1` y `monthly×3`) obligarían a normalizar en cada comparación.
+enum BackupFrequency { daily, weekly, monthly }
+
+/// Dónde se suben las copias de seguridad.
+enum BackupProvider { nextcloud, googleDrive }
+
 /// Tarjetas disponibles en el dashboard configurable.
 enum DashboardCardType {
   totalBalance,

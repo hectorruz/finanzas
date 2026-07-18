@@ -27,7 +27,14 @@
     <application
         android:label="finanzas"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"><!--
+        allowBackup=false: sin esto, Android Auto Backup sube la base de datos
+        Isar (con los tokens de sync y la contraseña de aplicación de Nextcloud
+        de las copias en la nube) al Google Drive del usuario sin que nadie lo
+        pida. Las copias en la nube ya son la vía deliberada y con consentimiento
+        de sacar los datos del dispositivo. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

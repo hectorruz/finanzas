@@ -90,8 +90,11 @@ class BackupService {
           .putAll(_list(data['goals']).map(_goalFromMap).toList());
 
       if (data['settings'] != null) {
-        await _isar.settings
-            .put(_settingsFromMap(data['settings'] as Map<String, dynamic>));
+        // Muta la fila existente para preservar los ajustes locales que no
+        // viajan en el backup (ver `_applySettingsFromMap`).
+        final current = await _isar.settings.get(0) ?? AppSettings();
+        _applySettingsFromMap(current, data['settings'] as Map<String, dynamic>);
+        await _isar.settings.put(current..id = 0);
       }
     });
   }
@@ -363,9 +366,17 @@ class BackupService {
     };
   }
 
-  AppSettings _settingsFromMap(Map<String, dynamic> m) {
-    final s = AppSettings()
-      ..id = 0
+  /// Aplica los ajustes del backup **sobre la fila existente**, tocando SOLO las
+  /// claves que exporta `_settingsToMap`. Es deliberado: los ajustes locales que
+  /// no viajan en el backup (identidad de sync `syncDeviceId`, config del
+  /// servidor, reglas de pago, credenciales y estado de las copias en la nube…)
+  /// deben sobrevivir a una importación. Construir un `AppSettings()` nuevo los
+  /// reseteaba a sus valores por defecto en silencio: perder `syncDeviceId`
+  /// reasignaba la identidad frente a los peers, y una restauración desde la
+  /// nube llegaba a apagar las propias copias y borrar la contraseña de
+  /// Nextcloud justo cuando más se confía en ellas.
+  void _applySettingsFromMap(AppSettings s, Map<String, dynamic> m) {
+    s
       ..themeMode = m['themeMode'] as String? ?? 'system'
       ..dynamicColor = m['dynamicColor'] as bool? ?? true
       ..amoled = m['amoled'] as bool? ?? true
@@ -385,7 +396,6 @@ class BackupService {
       ..dataVersion = m['dataVersion'] as int? ?? 0;
     final nav = (m['navSections'] as List<dynamic>?)?.cast<String>();
     if (nav != null && nav.isNotEmpty) s.navSections = nav;
-    return s;
   }
 }
 

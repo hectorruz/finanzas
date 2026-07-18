@@ -8,22 +8,32 @@ Flutter personal finance app targeting Android. Uses Isar (community fork) as lo
 
 ## First-time setup
 
-The `android/` platform folder and all `*.g.dart` files are **not versioned** and must be generated locally:
+The `android/` platform folder **is versioned** (manifest, `build.gradle.kts`, all
+Kotlin, resources — `git ls-files android/`); only `android/key.properties`,
+`**/*.keystore`, `android/app/google-services.json`, `android/.gradle/` and
+`android/local.properties` are git-ignored. All `*.g.dart` files are **not
+versioned** and must be generated locally:
 
 ```bash
-# 1. Generate android/ folder
-flutter create . --org com.hectorruz --platforms=android
-
-# 2. Install dependencies
+# 1. Install dependencies
 flutter pub get
 
-# 3. Generate Isar model code (*.g.dart)
+# 2. Generate Isar model code (*.g.dart)
 dart run build_runner build --delete-conflicting-outputs
 ```
 
-After `flutter create`, manually adjust `android/app/build.gradle.kts`:
-- `minSdkVersion 21` (required by ML Kit and dynamic color)
-- Enable core library desugaring (required by `flutter_local_notifications`, or the release build fails at `checkReleaseAarMetadata`):
+> **Application id is `com.example.finanzas`** (`android/app/build.gradle.kts`
+> `namespace`/`applicationId`, and the Kotlin package). An earlier version of
+> this doc said to regenerate `android/` with `flutter create . --org
+> com.hectorruz` — **do not**: `android/` is committed, and regenerating it would
+> flip the package id and break anything pinned to it (e.g. the Google Drive
+> OAuth client, which is registered against `com.example.finanzas` + SHA-1).
+
+`build.gradle.kts` config worth knowing (already set — no manual edit needed):
+- `minSdk = flutter.minSdkVersion` (Flutter ≥ 3.24 → 24; satisfies ML Kit,
+  dynamic color and `google_sign_in` 7.x, all of which want 21+).
+- Core library desugaring (required by `flutter_local_notifications`, or the
+  release build fails at `checkReleaseAarMetadata`):
   ```kotlin
   compileOptions {
       isCoreLibraryDesugaringEnabled = true
@@ -50,6 +60,7 @@ And `android/app/src/main/AndroidManifest.xml`:
       android:stopWithTask="true"
       android:exported="false" />
   ```
+- Set `android:allowBackup="false"` + `android:fullBackupContent="false"` on `<application>`. Without this, Android Auto Backup silently uploads the Isar DB — which holds the sync tokens and the Nextcloud app password used by cloud backups — to the *user's* Google Drive, unprompted. The cloud-backup feature is the deliberate, consented way to get data off the device. See "Copias de seguridad en la nube (fase 8)".
 
 For the app lock (`local_auth`), `MainActivity` must extend `FlutterFragmentActivity` (not `FlutterActivity`); otherwise the biometric prompt crashes.
 
@@ -455,6 +466,102 @@ hace indistinguible de dejar el campo vacío.
 hasta reiniciar o re-conceder el permiso, y parece un fallo de la feature. Usa
 `am kill`. Los gestores de batería agresivos de algunos fabricantes pueden causar
 lo mismo; es inherente a la plataforma.
+
+### Copias de seguridad en la nube (fase 8)
+
+Sube automáticamente el JSON de `BackupService.exportJson()` a **Nextcloud**
+(WebDAV) o **Google Drive** (REST), con frecuencia configurable, y permite
+restaurar desde una copia remota (`lib/features/backup/`). Todo son ajustes
+**locales** de `AppSettings` (no se sincronizan ni se respaldan — meter el estado
+de las copias dentro de las propias copias no tendría sentido): `backupEnabled`,
+`backupProvider`, `backupFrequency` + `backupEvery`, `backupHour/Minute`,
+`backupAnchorAt`, `backupLastRunAt/AttemptAt`, `backupLastResult`,
+`backupConsecutiveFailures`, `backupKeepLast`, `backupWifiOnly`,
+`backupProviderConfigs` (lista de `BackupProviderConfig` serializados, uno por
+proveedor). El JSON **no se cifra**: es restaurable a mano aunque la app
+desaparezca (decisión explícita).
+
+**Frecuencia = enum + "cada N", como `RecurringRule`:** `BackupFrequency
+{daily, weekly, monthly}` × `backupEvery`. **Trimestral = `monthly` × 3** — una
+sola representación canónica; no hay valor `quarterly` (daría dos formas de decir
+lo mismo). La UI ofrece presets (`kBackupPresets`) + personalizada, y
+`frequencyLabel(freq, every)` los nombra.
+
+**Planificador anclado, no por intervalo (`backup_planner.dart`, puro):** la
+serie de ocurrencias se calcula **siempre desde `backupAnchorAt`**
+(`occurrenceAt`/`nextOccurrenceAfter`/`isBackupDue`), nunca encadenando desde la
+copia anterior. El motivo es un bug sutil: encadenar con recorte de fin de mes
+(31 ene → 28 feb) haría que el día se **adelantara para siempre** (28 feb → 28 mar
+→ 28 abr). Anclado, la serie es 31 ene → 28 feb → **31 mar** → 30 abr, sin deriva.
+Los saltos usan el desbordamiento de `DateTime(y, m, d+k)` (no `add(Duration)`)
+para que la hora de pared aguante los cambios de horario de verano. `isBackupDue`
+sin `lastRun` → `true` (la primera copia se hace al activar, para validar la
+config ya).
+
+**Disparo oportunista (sin WorkManager):** `BackupSchedulerService.runIfDue()` se
+llama, sin bloquear, desde `main()`, desde `app.dart` al reanudar
+(`didChangeAppLifecycleState == resumed`) y al entrar en Wi-Fi
+(`_onConnectivityChanged`) — el mismo patrón que `materializeDue` /
+`tryBackgroundSyncAll` / `drainAndProcess`. **Limitación asumida:** con la app
+cerrada mucho tiempo no hay copia; se hace visible mostrando la antigüedad de la
+última copia en Ajustes **en rojo** cuando se pasa. No se usa WorkManager a
+propósito: su residuo huérfano ya causó el crash de release de `3b1bdfa`, y como
+el contenido de la copia es la propia BD, si no abres la app tampoco hay casi nada
+nuevo que copiar.
+
+**Tres modos de fallo silencioso, tapados en el orquestador:**
+1. **Backoff.** Un fallo persistente (contraseña cambiada) no avanza
+   `backupLastRunAt`, así que `isBackupDue` seguiría `true` y reintentaría
+   —export completo + subida— en **cada** reanudación. `backupLastAttemptAt` +
+   `backupConsecutiveFailures` frenan el reintento `min(2^fallos, 24) h`.
+2. **Rotación con voz.** La rotación vive en el orquestador (`list()` →
+   `entriesToDelete` → `delete()`), no en los proveedores. Si falla, la copia
+   sigue siendo válida pero el aviso viaja en `backupLastResult`; **nunca un
+   `catch (_)` mudo**.
+3. **Restaurar no borra los ajustes locales.** `BackupService.importJson` **muta
+   la fila de `settings` existente** (`_applySettingsFromMap`, solo las claves de
+   `_settingsToMap`) en vez de construir un `AppSettings()` nuevo. Antes, importar
+   reseteaba `syncDeviceId` (¡la identidad frente a los peers!), el lector de
+   pagos, las credenciales de backup… — y restaurar desde la nube llegaba a apagar
+   las propias copias. Test de regresión en `backup_roundtrip_test.dart`.
+
+**Retención (`backup_retention.dart`, puro):** nombre `finanzas_backup_<ISO-UTC>Z`
+en **UTC** para que el orden lexicográfico == cronológico siempre (con hora local,
+el horario de verano rompería el orden y la rotación borraría la copia
+equivocada). `entriesToDelete` **ignora ficheros ajenos** (`isBackupFilename`). El
+"conservar N copias" se traduce a historial real con `retentionHorizonLabel`
+("≈ 10 días") porque 10 copias diarias son solo 10 días.
+
+**Id de notificación de fallo: `800000000`** (rango libre; pagos `810000000+`,
+sync `900000000+`). Solo avisa a partir del 2.º fallo consecutivo. Payload
+`backup` → abre `Routes.backup` (enrutado en `app.dart`).
+
+**Proveedores (`http` plano, sin `googleapis`):** ambos con cliente inyectable
+para tests contra un `HttpServer` local (como `lan_sync_test.dart`).
+- Nextcloud (`nextcloud_provider.dart`): Basic auth con **contraseña de
+  aplicación**, `remote.php/dav/files/<user>/<carpeta>`. MKCOL idempotente
+  (**405 = ya existe, no es error**). Credenciales en Isar en claro, como
+  `SyncPeer.token` (NO `flutter_secure_storage`: su `read()==null` al invalidarse
+  el Keystore es indistinguible de "no configurado", justo el fallo silencioso que
+  este repo evita).
+- Google Drive (`google_drive_provider.dart` + `google_drive_auth.dart`): única
+  dependencia nueva **`google_sign_in: ^7.2.0`**, solo para el token. En la v7
+  `authenticate()` ya **no** da token: se pide aparte con
+  `authorizationClient.authorizationForScopes` (silencioso) /
+  `authorizeScopes`/`authorizationHeaders` (interactivo). Scope **solo
+  `drive.file`** (no sensible → sin verificación de seguridad de Google; ve solo
+  los ficheros que crea la app). El `folderId` se cachea en la config.
+  **Limitación de `drive.file`:** la restauración no lista copias que la app no
+  haya creado (subidas a mano, o tras revocar el acceso) — la UI lo avisa y queda
+  "Importar datos" desde fichero como escape.
+
+**OAuth de Google (una vez, en Google Cloud Console):** habilitar Drive API →
+pantalla de consentimiento **Externo** y **PUBLICAR** (en *Testing* el refresh
+token caduca a los 7 días) → credencial **OAuth tipo Android** con paquete
+`com.example.finanzas` y el **SHA-1 de release *y* de debug** (o Drive falla solo
+en un tipo de build). Solo `drive.file`. No hace falta `google-services.json` ni
+client secret. Las APK de CI van con clave de debug de CI → otro SHA-1 → Drive no
+funciona ahí (Nextcloud sí).
 
 ### Privacy mode (hide amounts)
 

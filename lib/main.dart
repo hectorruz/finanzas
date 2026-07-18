@@ -12,6 +12,7 @@ import 'core/db/isar_service.dart';
 import 'data/repositories/recurring_repository.dart';
 import 'data/repositories/settings_repository.dart';
 import 'data/seed_service.dart';
+import 'features/backup/backup_scheduler_service.dart';
 import 'features/notifications/notification_service.dart';
 import 'features/payments/payment_ingest_service.dart';
 import 'features/payments/payment_reader_sync.dart';
@@ -100,6 +101,10 @@ Future<void> main() async {
   // Lectura de notificaciones de pago: sincroniza al servicio nativo las apps
   // de origen y procesa lo capturado con la app cerrada. Sin bloquear.
   unawaited(_setUpPayments(isar));
+
+  // Copia en la nube si toca (disparo oportunista). Sin bloquear: exportar la
+  // BD serializa todo en el isolate principal, y el backoff lo acota a ~1/día.
+  unawaited(BackupSchedulerService(isar).runIfDue());
 
   runApp(
     ProviderScope(

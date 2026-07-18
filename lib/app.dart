@@ -13,6 +13,7 @@ import 'core/platform/quick_tile.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/settings_repository.dart';
+import 'features/backup/backup_scheduler_service.dart';
 import 'features/payments/payment_ingest_service.dart';
 import 'features/security/app_lock_gate.dart';
 import 'features/sync/net/sync_foreground_service.dart';
@@ -94,11 +95,20 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
       // Procesa los pagos capturados mientras la app estuvo en segundo plano.
       unawaited(
           PaymentIngestService(ref.read(isarProvider)).drainAndProcess());
+      // Copia en la nube si toca (disparo oportunista al volver a la app).
+      unawaited(
+          BackupSchedulerService(ref.read(isarProvider)).runIfDue());
     }
   }
 
   void _onConnectivityChanged(List<ConnectivityResult> results) {
-    if (results.contains(ConnectivityResult.wifi)) _tryBackgroundSync();
+    if (results.contains(ConnectivityResult.wifi)) {
+      _tryBackgroundSync();
+      // Cubre el caso "tocaba copia pero estabas en datos móviles": al entrar
+      // en Wi-Fi se reintenta (runIfDue respeta la cadencia y el backoff).
+      unawaited(
+          BackupSchedulerService(ref.read(isarProvider)).runIfDue());
+    }
   }
 
   void _handleQuickAction(String action) {
@@ -120,6 +130,8 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
     if (payload == null) return;
     if (payload == 'sync') {
       ref.read(routerProvider).push(Routes.sync);
+    } else if (payload == 'backup') {
+      ref.read(routerProvider).push(Routes.backup);
     } else if (payload.startsWith('payment:')) {
       // Gasto detectado: abre su editor para revisar/editar/borrar.
       final id = int.tryParse(payload.substring('payment:'.length));

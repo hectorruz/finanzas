@@ -75,6 +75,11 @@ dependencies:
   timezone: ^0.11.1
   flutter_timezone: ^5.1.0
 
+  # Copias de seguridad en la nube: solo para obtener el token OAuth de Google
+  # Drive (scope drive.file). El resto de la API de Drive se habla con `http`
+  # plano, sin `googleapis`. Nextcloud no necesita ninguna dependencia.
+  google_sign_in: ^7.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

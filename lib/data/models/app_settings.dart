@@ -32,6 +32,98 @@ class BalanceSubtotal {
   }
 }
 
+/// Configuración de un destino de copias en la nube. Se guarda serializada en
+/// [AppSettings.backupProviderConfigs], **una entrada por proveedor**: así se
+/// pueden tener Nextcloud y Drive configurados a la vez y alternar entre ellos
+/// sin volver a teclear las credenciales.
+///
+/// Los campos que no usa un proveedor quedan vacíos (mismo pragmatismo que
+/// `NotificationRule` con sus regex opcionales).
+class BackupProviderConfig {
+  const BackupProviderConfig({
+    required this.provider,
+    this.baseUrl = '',
+    this.user = '',
+    this.password = '',
+    this.folder = 'Finanzas',
+    this.account = '',
+    this.folderId = '',
+  });
+
+  final BackupProvider provider;
+
+  /// Nextcloud: URL de la instancia (p. ej. `https://cloud.example.com`).
+  final String baseUrl;
+
+  /// Nextcloud: usuario.
+  final String user;
+
+  /// Nextcloud: **contraseña de aplicación** (Ajustes → Seguridad en Nextcloud),
+  /// no la contraseña de la cuenta.
+  final String password;
+
+  /// Carpeta donde se dejan las copias, en ambos proveedores.
+  final String folder;
+
+  /// Drive: correo de la cuenta conectada. Solo para mostrarlo en la UI; el
+  /// token lo gestiona `google_sign_in` en su propio almacén.
+  final String account;
+
+  /// Drive: id de la carpeta creada por la app, cacheado para no buscarla en
+  /// cada copia. Vacío = aún no se conoce (se busca o se crea).
+  final String folderId;
+
+  BackupProviderConfig copyWith({
+    String? baseUrl,
+    String? user,
+    String? password,
+    String? folder,
+    String? account,
+    String? folderId,
+  }) =>
+      BackupProviderConfig(
+        provider: provider,
+        baseUrl: baseUrl ?? this.baseUrl,
+        user: user ?? this.user,
+        password: password ?? this.password,
+        folder: folder ?? this.folder,
+        account: account ?? this.account,
+        folderId: folderId ?? this.folderId,
+      );
+
+  String encode() => jsonEncode({
+        'provider': provider.name,
+        'baseUrl': baseUrl,
+        'user': user,
+        'password': password,
+        'folder': folder,
+        'account': account,
+        'folderId': folderId,
+      });
+
+  /// Decodifica una entrada; devuelve `null` si el JSON es inválido.
+  static BackupProviderConfig? tryDecode(String raw) {
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      return BackupProviderConfig(
+        provider: enumByName(
+          BackupProvider.values,
+          m['provider'] as String?,
+          BackupProvider.nextcloud,
+        ),
+        baseUrl: m['baseUrl'] as String? ?? '',
+        user: m['user'] as String? ?? '',
+        password: m['password'] as String? ?? '',
+        folder: m['folder'] as String? ?? 'Finanzas',
+        account: m['account'] as String? ?? '',
+        folderId: m['folderId'] as String? ?? '',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 /// Registro único (id fijo) con la configuración global de la app.
 @Collection(accessor: 'settings')
 class AppSettings {
@@ -192,6 +284,62 @@ class AppSettings {
   /// Ver `CardAccountRule`.
   List<String> cardAccountRules = [];
 
+  // --- Copias de seguridad en la nube.
+  //     Local: no se sincroniza ni se respalda (son credenciales y preferencias
+  //     de este dispositivo; además, meter el estado de las copias dentro de las
+  //     propias copias no tendría sentido) ---
+
+  /// Si se suben copias automáticas a la nube.
+  bool backupEnabled = false;
+
+  /// Proveedor activo, por nombre de [BackupProvider].
+  String backupProvider = 'nextcloud';
+
+  /// Cada cuánto se copia, por nombre de [BackupFrequency]. Combinado con
+  /// [backupEvery]: trimestral = `monthly` + `backupEvery = 3`.
+  String backupFrequency = 'weekly';
+
+  /// Multiplicador de [backupFrequency] ("cada N"). Mínimo 1.
+  int backupEvery = 1;
+
+  /// Hora preferida de la copia (24h, hora local). Es orientativa: la copia se
+  /// hace en el primer arranque/reanudación posterior a la hora, no a la hora
+  /// exacta (ver `BackupSchedulerService`).
+  int backupHour = 3;
+  int backupMinute = 0;
+
+  /// Ancla de la serie de ocurrencias. Todas las fechas se calculan **desde
+  /// aquí**, nunca desde la última copia: anclar en la última copia haría que el
+  /// recorte de fin de mes (31 → 28) se realimentara y el día se adelantara para
+  /// siempre. `null` = aún no programado.
+  DateTime? backupAnchorAt;
+
+  /// Última copia **con éxito**. Es lo que decide si toca copia.
+  DateTime? backupLastRunAt;
+
+  /// Último **intento**, con éxito o sin él. Solo lo usa el backoff: sin esto,
+  /// un fallo persistente (contraseña cambiada) reintentaría en cada
+  /// reanudación, para siempre.
+  DateTime? backupLastAttemptAt;
+
+  /// Resultado legible del último intento, para mostrarlo en Ajustes.
+  String backupLastResult = '';
+
+  /// Fallos consecutivos. Alimenta el backoff exponencial y decide cuándo avisar.
+  int backupConsecutiveFailures = 0;
+
+  /// Cuántas copias se conservan en la nube; las más antiguas se borran. Ojo:
+  /// esto es un número de copias, no de días — con frecuencia diaria, 10 copias
+  /// son 10 días de historial (la UI lo traduce con `retentionHorizon`).
+  int backupKeepLast = 10;
+
+  /// Copiar solo con Wi-Fi. Por defecto `true`: subir varios MB por datos
+  /// móviles sin avisar sería hostil.
+  bool backupWifiOnly = true;
+
+  /// Configuración de cada destino, serializada. Ver [BackupProviderConfig].
+  List<String> backupProviderConfigs = [];
+
   // --- Migraciones ---
 
   /// Versión del esquema de datos ya aplicada en esta BD. La usa el migrador
@@ -245,6 +393,59 @@ class AppSettings {
         }
       }
     }
+    return result;
+  }
+
+  /// Frecuencia de copia parseada de forma segura.
+  @ignore
+  BackupFrequency get backupFrequencyEnum => enumByName(
+        BackupFrequency.values,
+        backupFrequency,
+        BackupFrequency.weekly,
+      );
+
+  /// Proveedor de copias activo, parseado de forma segura.
+  @ignore
+  BackupProvider get backupProviderEnum => enumByName(
+        BackupProvider.values,
+        backupProvider,
+        BackupProvider.nextcloud,
+      );
+
+  /// Configuración de todos los destinos, parseada de forma segura (descarta
+  /// entradas corruptas). Para escribir, codifica con
+  /// [BackupProviderConfig.encode].
+  @ignore
+  List<BackupProviderConfig> get backupConfigs {
+    final result = <BackupProviderConfig>[];
+    for (final raw in backupProviderConfigs) {
+      final c = BackupProviderConfig.tryDecode(raw);
+      if (c != null) result.add(c);
+    }
+    return result;
+  }
+
+  /// Configuración de [provider], o una vacía si aún no se ha configurado.
+  @ignore
+  BackupProviderConfig configFor(BackupProvider provider) {
+    for (final c in backupConfigs) {
+      if (c.provider == provider) return c;
+    }
+    return BackupProviderConfig(provider: provider);
+  }
+
+  /// Configuración del destino activo.
+  @ignore
+  BackupProviderConfig get activeBackupConfig => configFor(backupProviderEnum);
+
+  /// Devuelve las entradas serializadas con [config] insertada o reemplazando la
+  /// del mismo proveedor. Para usar dentro de `SettingsRepository.update`.
+  List<String> withBackupConfig(BackupProviderConfig config) {
+    final result = <String>[];
+    for (final c in backupConfigs) {
+      if (c.provider != config.provider) result.add(c.encode());
+    }
+    result.add(config.encode());
     return result;
   }
 }

@@ -12,6 +12,7 @@ import '../../features/movements/recurring_editor_screen.dart';
 import '../../features/movements/recurring_screen.dart';
 import '../../features/receipts/receipt_scan_screen.dart';
 import '../../features/reports/report_screen.dart';
+import '../../features/settings/backup_settings_screen.dart';
 import '../../features/settings/dashboard_config_screen.dart';
 import '../../features/settings/nav_config_screen.dart';
 import '../../features/settings/payment_settings_screen.dart';
@@ -38,6 +39,7 @@ class Routes {
   static const serverSettings = '/settings/sync/server';
   static const webapp = '/settings/webapp';
   static const paymentReader = '/settings/payments';
+  static const backup = '/settings/backup';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -124,6 +126,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.paymentReader,
         builder: (_, __) => const PaymentSettingsScreen(),
+      ),
+      GoRoute(
+        path: Routes.backup,
+        builder: (_, __) => const BackupSettingsScreen(),
       ),
     ],
   );
