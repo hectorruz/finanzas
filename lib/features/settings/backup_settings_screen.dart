@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -115,36 +116,12 @@ class BackupSettingsScreen extends ConsumerWidget {
           const _Header('Retención'),
           ListTile(
             leading: const Icon(Icons.history),
-            title: Text('Conservar las últimas ${s.backupKeepLast} copias'),
-            subtitle: Text(retentionHorizonLabel(
-                s.backupFrequencyEnum, s.backupEvery, s.backupKeepLast)),
+            title: Text('Conservar las últimas ${_clampKeep(s.backupKeepLast)} '
+                'copias'),
+            subtitle: Text(retentionHorizonLabel(s.backupFrequencyEnum,
+                s.backupEvery, _clampKeep(s.backupKeepLast))),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                IconButton.outlined(
-                  onPressed: s.backupKeepLast > 1
-                      ? () => repo.update(
-                          (x) => x.backupKeepLast = x.backupKeepLast - 1)
-                      : null,
-                  icon: const Icon(Icons.remove),
-                ),
-                const SizedBox(width: 12),
-                Text('${s.backupKeepLast}',
-                    style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(width: 12),
-                IconButton.outlined(
-                  onPressed: s.backupKeepLast < 99
-                      ? () => repo.update(
-                          (x) => x.backupKeepLast = x.backupKeepLast + 1)
-                      : null,
-                  icon: const Icon(Icons.add),
-                ),
-              ],
-            ),
-          ),
+          _RetentionSelector(current: _clampKeep(s.backupKeepLast)),
           const Divider(),
 
           // --- Acciones y estado ---
@@ -430,6 +407,110 @@ String _sizeLabel(int? bytes) {
   if (bytes < 1024) return '$bytes B';
   if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
   return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+}
+
+/// Fuerza el número de copias a conservar a un rango sano [1, 999]. Defensa en
+/// profundidad frente al centinela de Isar (Int.MIN) en registros migrados desde
+/// una versión previa: aunque la migración lo saneó ya, la UI nunca debe mostrar
+/// ni guardar un valor absurdo.
+int _clampKeep(int v) => v < 1 ? 1 : (v > 999 ? 999 : v);
+
+// --- Selector de retención (botones + campo escribible) ---
+
+class _RetentionSelector extends ConsumerStatefulWidget {
+  const _RetentionSelector({required this.current});
+  final int current;
+
+  @override
+  ConsumerState<_RetentionSelector> createState() => _RetentionSelectorState();
+}
+
+class _RetentionSelectorState extends ConsumerState<_RetentionSelector> {
+  late final TextEditingController _controller =
+      TextEditingController(text: '${widget.current}');
+  final _focus = FocusNode();
+
+  @override
+  void didUpdateWidget(_RetentionSelector old) {
+    super.didUpdateWidget(old);
+    // Si el valor cambió por los botones (o la migración), y el campo no se está
+    // editando, refleja el nuevo valor sin pisar lo que el usuario teclea.
+    if (widget.current != old.current && !_focus.hasFocus) {
+      _controller.text = '${widget.current}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save(int value) async {
+    final v = _clampKeep(value);
+    await ref
+        .read(settingsRepositoryProvider)
+        .update((x) => x.backupKeepLast = v);
+    if (mounted && _controller.text != '$v') _controller.text = '$v';
+  }
+
+  void _commitField() {
+    final parsed = int.tryParse(_controller.text.trim());
+    _save(parsed ?? widget.current);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          const Text('Copias a conservar'),
+          const Spacer(),
+          IconButton.outlined(
+            onPressed: widget.current > 1
+                ? () => _save(widget.current - 1)
+                : null,
+            icon: const Icon(Icons.remove),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 64,
+            child: TextField(
+              controller: _controller,
+              focusNode: _focus,
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(3),
+              ],
+              style: Theme.of(context).textTheme.titleLarge,
+              decoration: const InputDecoration(isDense: true),
+              onEditingComplete: () {
+                _commitField();
+                _focus.unfocus();
+              },
+              onSubmitted: (_) => _commitField(),
+              onTapOutside: (_) {
+                _commitField();
+                _focus.unfocus();
+              },
+            ),
+          ),
+          const SizedBox(width: 12),
+          IconButton.outlined(
+            onPressed: widget.current < 999
+                ? () => _save(widget.current + 1)
+                : null,
+            icon: const Icon(Icons.add),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // --- Sección Nextcloud ---

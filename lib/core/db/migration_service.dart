@@ -15,7 +15,13 @@ import '../sync/syncable.dart';
 ///
 /// - v1: campos de sincronización (uuid/updatedAt/deletedAt) añadidos a las
 ///   colecciones de dominio; backfill de uuid y updatedAt de las filas previas.
-const int kCurrentDataVersion = 1;
+/// - v2: campos `int` de las copias en la nube (`backupKeepLast`, `backupEvery`,
+///   `backupHour`, `backupMinute`, `backupConsecutiveFailures`). Al añadir un
+///   `int` no-nullable a una colección con filas ya guardadas, Isar rellena esas
+///   filas con su centinela `-9223372036854775808` (Int.MIN) en vez del default
+///   del constructor Dart. El registro `settings` preexistente salió así, y la
+///   UI mostraba "conservar las últimas -9223372036854775808 copias". Se sanean.
+const int kCurrentDataVersion = 2;
 
 /// Ejecuta las migraciones de datos pendientes de forma **idempotente**.
 ///
@@ -32,11 +38,28 @@ Future<void> runMigrations(Isar isar) async {
       await _backfillSyncFields(isar);
     }
 
+    if (settings.dataVersion < 2) {
+      _sanitizeBackupFields(settings);
+    }
+
     if (settings.dataVersion != kCurrentDataVersion) {
       settings.dataVersion = kCurrentDataVersion;
       await isar.settings.put(settings);
     }
   });
+}
+
+/// v2: devuelve a un valor válido los `int` de las copias en la nube que Isar
+/// haya dejado en su centinela (Int.MIN) en el registro `settings` preexistente.
+/// Solo toca lo que está fuera de rango, así que es idempotente y no pisa una
+/// configuración que el usuario sí hubiera puesto (los strings/bools con las
+/// credenciales no se tocan).
+void _sanitizeBackupFields(AppSettings s) {
+  if (s.backupKeepLast < 1 || s.backupKeepLast > 999) s.backupKeepLast = 10;
+  if (s.backupEvery < 1 || s.backupEvery > 999) s.backupEvery = 1;
+  if (s.backupHour < 0 || s.backupHour > 23) s.backupHour = 3;
+  if (s.backupMinute < 0 || s.backupMinute > 59) s.backupMinute = 0;
+  if (s.backupConsecutiveFailures < 0) s.backupConsecutiveFailures = 0;
 }
 
 /// v1: asigna `uuid` y `updatedAt` a toda fila que aún no los tenga (las creadas
