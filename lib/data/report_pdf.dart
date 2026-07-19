@@ -64,8 +64,18 @@ Future<File> buildReportPdf(ReportData data) async {
       ? _pieBlock(data.categoryExpenses, data.totalExpense)
       : null;
 
-  // --- Página dashboard (portada con KPIs) ---
+  // --- Página dashboard (portada personalizable) ---
   if (o.dashboardPage) {
+    final kpiTiles = [
+      for (final key in o.coverCards)
+        if (_kpiCoverKeys.contains(key))
+          if (_kpiTileFor(key, data) case final w?) w,
+    ];
+    final blocks = [
+      for (final key in o.coverCards)
+        if (!_kpiCoverKeys.contains(key))
+          if (_blockFor(key, data, pie) case final w?) w,
+    ];
     doc.addPage(
       pw.Page(
         theme: theme,
@@ -76,12 +86,8 @@ Future<File> buildReportPdf(ReportData data) async {
           children: [
             _banner(o, df),
             pw.SizedBox(height: 18),
-            _kpiGrid(data),
-            if (pie != null) ...[
-              pw.SizedBox(height: 20),
-              _sectionTitle('Reparto de gasto'),
-              pie,
-            ],
+            if (kpiTiles.isNotEmpty) _kpiGridFrom(kpiTiles),
+            for (final b in blocks) ...[pw.SizedBox(height: 20), b],
           ],
         ),
       ),
@@ -320,39 +326,108 @@ pw.Widget _cardRow(List<pw.Widget> cards) {
   );
 }
 
-/// Rejilla de KPIs para la portada dashboard.
-pw.Widget _kpiGrid(ReportData data) {
-  final o = data.options;
-  final tiles = <pw.Widget>[];
-  if (o.flow.showsIncome) {
-    tiles.add(_card('Ingresos', _money(data.totalIncome), _income));
-  }
-  if (o.flow.showsExpense) {
-    tiles.add(_card('Gastos', _money(data.totalExpense), _expense));
-  }
-  if (o.flow == ReportFlow.both) {
-    tiles.add(_card('Neto', _signed(data.net), data.net >= 0 ? _income : _expense));
-    tiles.add(_card('Ahorro', '${data.savingsRate.toStringAsFixed(1)} %',
-        data.savingsRate >= 0 ? _income : _expense));
-  }
-  if (data.averages?.maxExpense != null) {
-    final m = data.averages!.maxExpense!;
-    tiles.add(_card('Mayor gasto', _money(m.cents), _expense,
-        sub: m.concept.isEmpty ? null : m.concept));
-  }
-  if (data.categoryExpenses.isNotEmpty) {
-    final top = data.options.amountSort == AmountSort.desc
-        ? data.categoryExpenses.first
-        : data.categoryExpenses.last;
-    tiles.add(_card('Categoría top', _money(top.cents), _accentDark,
-        sub: top.label));
-  }
-  if (data.accountUsage.isNotEmpty) {
-    final top = data.accountUsage.first;
-    tiles.add(_card('Cuenta más usada', '${top.count} mov.', _accentDark,
-        sub: top.label));
-  }
+/// Claves de tarjeta de portada que van en la rejilla de KPIs (el resto son
+/// gráficos/bloques de análisis a ancho completo, vía [_blockFor]).
+const _kpiCoverKeys = {
+  'kpiIncome',
+  'kpiExpense',
+  'kpiNet',
+  'kpiSavingsRate',
+  'kpiBiggestExpense',
+  'kpiTopCategory',
+  'kpiTopAccount',
+};
 
+/// Construye la tarjeta KPI de portada para una clave, o `null` si el flujo o
+/// los datos disponibles no la hacen aplicable (p. ej. "Neto" con flujo de
+/// solo gastos).
+pw.Widget? _kpiTileFor(String key, ReportData data) {
+  final o = data.options;
+  switch (key) {
+    case 'kpiIncome':
+      return o.flow.showsIncome
+          ? _card('Ingresos', _money(data.totalIncome), _income)
+          : null;
+    case 'kpiExpense':
+      return o.flow.showsExpense
+          ? _card('Gastos', _money(data.totalExpense), _expense)
+          : null;
+    case 'kpiNet':
+      return o.flow == ReportFlow.both
+          ? _card('Neto', _signed(data.net), data.net >= 0 ? _income : _expense)
+          : null;
+    case 'kpiSavingsRate':
+      return o.flow == ReportFlow.both
+          ? _card('Ahorro', '${data.savingsRate.toStringAsFixed(1)} %',
+              data.savingsRate >= 0 ? _income : _expense)
+          : null;
+    case 'kpiBiggestExpense':
+      final m = data.maxExpense;
+      return m == null
+          ? null
+          : _card('Mayor gasto', _money(m.cents), _expense,
+              sub: m.concept.isEmpty ? null : m.concept);
+    case 'kpiTopCategory':
+      if (data.categoryExpenses.isEmpty) return null;
+      final top = o.amountSort == AmountSort.desc
+          ? data.categoryExpenses.first
+          : data.categoryExpenses.last;
+      return _card('Categoría top', _money(top.cents), _accentDark,
+          sub: top.label);
+    case 'kpiTopAccount':
+      if (data.accountUsage.isEmpty) return null;
+      final top = data.accountUsage.first;
+      return _card('Cuenta más usada', '${top.count} mov.', _accentDark,
+          sub: top.label);
+    default:
+      return null;
+  }
+}
+
+/// Construye el bloque de portada (gráfico o análisis) para una clave, o
+/// `null` si no aplica (gráfico desactivado, sin datos, o sección no pedida).
+pw.Widget? _blockFor(String key, ReportData data, pw.Widget? pie) {
+  final o = data.options;
+  switch (key) {
+    case 'chartCategoryPie':
+      return pie == null
+          ? null
+          : pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              _sectionTitle('Reparto de gasto'),
+              pie,
+            ]);
+    case 'chartEvolutionBar':
+      return (o.barChart && data.evolution.isNotEmpty)
+          ? pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              _sectionTitle('Evolución'),
+              _barBlock(data),
+            ])
+          : null;
+    case 'blockComparison':
+      return data.comparison == null ? null : _comparisonRow(data);
+    case 'blockAverages':
+      return data.averages == null
+          ? null
+          : pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              _sectionTitle('Medias y récords'),
+              _averagesBlock(data),
+            ]);
+    case 'blockTopCategories':
+      return data.categoryExpenses.isEmpty
+          ? null
+          : pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              _sectionTitle('Top categorías de gasto'),
+              _amountTable('Categoría', data.categoryExpenses.take(5).toList(),
+                  data.totalExpense,
+                  showPct: o.showPercentages),
+            ]);
+    default:
+      return null;
+  }
+}
+
+/// Rejilla de KPIs (3 por fila) para la portada dashboard.
+pw.Widget _kpiGridFrom(List<pw.Widget> tiles) {
   // Disponer en filas de 3.
   final rows = <pw.Widget>[];
   for (var i = 0; i < tiles.length; i += 3) {

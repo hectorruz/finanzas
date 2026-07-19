@@ -10,6 +10,7 @@ import '../../data/models/category.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../shared/widgets/report_cover_cards_editor.dart';
 
 /// Pantalla para generar un informe descargable (PDF / Excel) de un tramo de
 /// fechas, eligiendo qué secciones incluir, cómo ordenarlas y qué filtrar.
@@ -126,8 +127,13 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
             // --- Secciones ---
             const _SectionHeader('Secciones a incluir'),
             _sectionTile('Portada resumen (dashboard)',
-                'KPIs destacados y gráfico', c.dashboardPage,
+                'Métricas, gráficos y análisis personalizables', c.dashboardPage,
                 (v) => _update(c.copyWith(dashboardPage: v))),
+            if (c.dashboardPage)
+              ReportCoverCardsEditor(
+                cards: c.coverCards,
+                onChanged: (v) => _update(c.copyWith(coverCards: v)),
+              ),
             _sectionTile('Balance', 'Resumen, saldo por cuenta y gasto por categoría',
                 c.balance, (v) => _update(c.copyWith(balance: v))),
             _sectionTile('Ingreso por categoría', 'De dónde vienen tus ingresos',

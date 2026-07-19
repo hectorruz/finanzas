@@ -116,6 +116,97 @@ void _signColors(Worksheet sheet, int firstRow, int lastRow, int col) {
   red.fontColor = _red;
 }
 
+/// Escribe en la hoja Resumen la fila (o bloque) correspondiente a una
+/// tarjeta de portada (mismas claves que `report_cover_cards.dart`). Las
+/// tarjetas de tipo gráfico (`chart*`) se omiten en silencio: Excel no
+/// soporta gráficos en este informe (ver `report_pdf.dart` para esas).
+void _resumenCard(_W w, Worksheet s, String key, ReportData data) {
+  final o = data.options;
+  if (key == 'kpiIncome') {
+    if (o.flow.showsIncome) w.labelAmount('Ingresos', data.totalIncome);
+  } else if (key == 'kpiExpense') {
+    if (o.flow.showsExpense) w.labelAmount('Gastos', data.totalExpense);
+  } else if (key == 'kpiNet') {
+    if (o.flow == ReportFlow.both) w.labelAmount('Neto', data.net);
+  } else if (key == 'kpiSavingsRate') {
+    if (o.flow == ReportFlow.both) {
+      final r = s.getRangeByIndex(w.row, 1)..setText('Ahorro');
+      r.cellStyle.bold = false;
+      final v = s.getRangeByIndex(w.row, 2)..setNumber(data.savingsRate / 100);
+      v.numberFormat = '0.0%';
+      v.cellStyle.hAlign = HAlignType.right;
+      w.row++;
+    }
+  } else if (key == 'kpiBiggestExpense') {
+    final m = data.maxExpense;
+    if (m != null) {
+      w.labelAmount(
+          'Mayor gasto${m.concept.isEmpty ? '' : ' · ${m.concept}'}', m.cents);
+    }
+  } else if (key == 'kpiTopCategory') {
+    if (data.categoryExpenses.isNotEmpty) {
+      final top = o.amountSort == AmountSort.desc
+          ? data.categoryExpenses.first
+          : data.categoryExpenses.last;
+      w.labelAmount('Categoría con más gasto: ${top.label}', top.cents);
+    }
+  } else if (key == 'kpiTopAccount') {
+    if (data.accountUsage.isNotEmpty) {
+      final top = data.accountUsage.first;
+      final r = s.getRangeByIndex(w.row, 1)
+        ..setText('Cuenta más usada: ${top.label} (${top.count} mov.)');
+      r.cellStyle.fontColor = '#455A64';
+      w.row++;
+    }
+  } else if (key == 'blockComparison') {
+    final c = data.comparison;
+    if (c != null) {
+      w.blank();
+      w.title('Comparativa con el periodo anterior');
+      w.header(const ['', 'Actual', 'Anterior']);
+      if (o.flow.showsIncome) {
+        w.labelAmount('Ingresos', data.totalIncome);
+        s.getRangeByIndex(w.row - 1, 3).setNumber(_euros(c.income));
+        s.getRangeByIndex(w.row - 1, 3).numberFormat = _eurFmt;
+      }
+      if (o.flow.showsExpense) {
+        w.labelAmount('Gastos', data.totalExpense);
+        s.getRangeByIndex(w.row - 1, 3).setNumber(_euros(c.expense));
+        s.getRangeByIndex(w.row - 1, 3).numberFormat = _eurFmt;
+      }
+      if (o.flow == ReportFlow.both) {
+        w.labelAmount('Neto', data.net);
+        s.getRangeByIndex(w.row - 1, 3).setNumber(_euros(c.net));
+        s.getRangeByIndex(w.row - 1, 3).numberFormat = _eurFmt;
+      }
+    }
+  } else if (key == 'blockAverages') {
+    final a = data.averages;
+    if (a != null) {
+      w.blank();
+      w.title('Medias y récords');
+      if (o.flow.showsExpense) {
+        w.labelAmount('Gasto medio diario', a.avgDailyExpense);
+        w.labelAmount('Gasto medio mensual', a.avgMonthlyExpense);
+      }
+      if (o.flow.showsIncome) {
+        w.labelAmount('Ingreso medio diario', a.avgDailyIncome);
+      }
+    }
+  } else if (key == 'blockTopCategories') {
+    if (data.categoryExpenses.isNotEmpty) {
+      w.blank();
+      w.title('Top categorías de gasto');
+      w.header(['Categoría', 'Gasto', if (o.showPercentages) '%']);
+      for (final c in data.categoryExpenses.take(5)) {
+        w.labelAmount(c.label, c.cents,
+            total: data.totalExpense, pct: o.showPercentages);
+      }
+    }
+  }
+  // 'chartCategoryPie'/'chartEvolutionBar' y claves desconocidas: sin efecto.
+}
+
 /// Genera el .xlsx del informe con Syncfusion XlsIO y lo escribe a temporal.
 Future<File> buildReportExcel(ReportData data) async {
   final o = data.options;
@@ -135,58 +226,16 @@ Future<File> buildReportExcel(ReportData data) async {
     return s;
   }
 
-  // --- Hoja Resumen (KPIs) ---
-  {
+  // --- Hoja Resumen (portada personalizable: mismas tarjetas que la del PDF,
+  // salvo las de tipo gráfico, que Excel no soporta) ---
+  if (o.dashboardPage) {
     final s = newSheet('Resumen');
     final w = _W(s);
     w.title('Informe Finanzas');
     w.blank();
     w.title('Resumen del periodo');
-    if (o.flow.showsIncome) w.labelAmount('Ingresos', data.totalIncome);
-    if (o.flow.showsExpense) w.labelAmount('Gastos', data.totalExpense);
-    if (o.flow == ReportFlow.both) {
-      w.labelAmount('Neto', data.net);
-      final r = s.getRangeByIndex(w.row, 1)..setText('Ahorro');
-      r.cellStyle.bold = false;
-      final v = s.getRangeByIndex(w.row, 2)..setNumber(data.savingsRate / 100);
-      v.numberFormat = '0.0%';
-      v.cellStyle.hAlign = HAlignType.right;
-      w.row++;
-    }
-    if (o.comparison && data.comparison != null) {
-      w.blank();
-      w.title('Comparativa con el periodo anterior');
-      w.header(const ['', 'Actual', 'Anterior']);
-      final c = data.comparison!;
-      if (o.flow.showsIncome) {
-        w.labelAmount('Ingresos', data.totalIncome);
-        s.getRangeByIndex(w.row - 1, 3).setNumber(_euros(c.income));
-        s.getRangeByIndex(w.row - 1, 3).numberFormat = _eurFmt;
-      }
-      if (o.flow.showsExpense) {
-        w.labelAmount('Gastos', data.totalExpense);
-        s.getRangeByIndex(w.row - 1, 3).setNumber(_euros(c.expense));
-        s.getRangeByIndex(w.row - 1, 3).numberFormat = _eurFmt;
-      }
-      if (o.flow == ReportFlow.both) {
-        w.labelAmount('Neto', data.net);
-        s.getRangeByIndex(w.row - 1, 3).setNumber(_euros(c.net));
-        s.getRangeByIndex(w.row - 1, 3).numberFormat = _eurFmt;
-      }
-    }
-    if (data.categoryExpenses.isNotEmpty) {
-      w.blank();
-      final top = o.amountSort == AmountSort.desc
-          ? data.categoryExpenses.first
-          : data.categoryExpenses.last;
-      w.labelAmount('Categoría con más gasto: ${top.label}', top.cents);
-    }
-    if (data.accountUsage.isNotEmpty) {
-      final top = data.accountUsage.first;
-      final r = s.getRangeByIndex(w.row, 1)
-        ..setText('Cuenta más usada: ${top.label} (${top.count} mov.)');
-      r.cellStyle.fontColor = '#455A64';
-      w.row++;
+    for (final key in o.coverCards) {
+      _resumenCard(w, s, key, data);
     }
     s.getRangeByIndex(1, 1, 1, 3).columnWidth = 26;
     s.getRangeByIndex(1, 1).columnWidth = 32;

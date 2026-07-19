@@ -14,6 +14,22 @@ import 'repositories/account_repository.dart';
 /// Granularidad de la sección de evolución del informe.
 enum EvolutionGranularity { weekly, monthly, yearly }
 
+/// Claves de tarjeta disponibles para la portada personalizable del informe
+/// (ver `lib/data/report_cover_cards.dart` para etiquetas/iconos del editor).
+/// Vive aquí (y no en el catálogo con `IconData`) para que este fichero, sin
+/// dependencia de Flutter Material, siga siendo el único origen de verdad del
+/// valor por defecto que usan tanto el editor como `ReportConfig.decode`.
+const kDefaultReportCoverCards = <String>[
+  'kpiIncome',
+  'kpiExpense',
+  'kpiNet',
+  'kpiSavingsRate',
+  'kpiBiggestExpense',
+  'kpiTopCategory',
+  'kpiTopAccount',
+  'chartCategoryPie',
+];
+
 /// Qué flujos de movimientos incluir en el informe.
 enum ReportFlow { income, expense, both }
 
@@ -103,6 +119,7 @@ class ReportOptions {
     // Gráficos (solo PDF)
     this.pieChart = true,
     this.barChart = true,
+    this.coverCards = kDefaultReportCoverCards,
   });
 
   final DateTime from;
@@ -141,6 +158,11 @@ class ReportOptions {
   // --- Gráficos ---
   final bool pieChart;
   final bool barChart;
+
+  /// Qué tarjetas (KPIs/gráficos/análisis) muestra la portada dashboard, y en
+  /// qué orden. Claves de `kReportCoverCatalog`; una clave desconocida (versión
+  /// antigua tras quitar un tipo de tarjeta) se ignora al renderizar.
+  final List<String> coverCards;
 
   /// ¿Hay alguna sección seleccionada?
   bool get anySection =>
@@ -182,6 +204,7 @@ class ReportConfig {
     this.averages = false,
     this.pieChart = true,
     this.barChart = true,
+    this.coverCards = kDefaultReportCoverCards,
   });
 
   final ReportFlow flow;
@@ -205,6 +228,7 @@ class ReportConfig {
   final bool averages;
   final bool pieChart;
   final bool barChart;
+  final List<String> coverCards;
 
   ReportConfig copyWith({
     ReportFlow? flow,
@@ -228,6 +252,7 @@ class ReportConfig {
     bool? averages,
     bool? pieChart,
     bool? barChart,
+    List<String>? coverCards,
   }) =>
       ReportConfig(
         flow: flow ?? this.flow,
@@ -251,6 +276,7 @@ class ReportConfig {
         averages: averages ?? this.averages,
         pieChart: pieChart ?? this.pieChart,
         barChart: barChart ?? this.barChart,
+        coverCards: coverCards ?? this.coverCards,
       );
 
   /// Construye las opciones de un informe combinando la config con un rango.
@@ -279,6 +305,7 @@ class ReportConfig {
         averages: averages,
         pieChart: pieChart,
         barChart: barChart,
+        coverCards: coverCards,
       );
 
   String encode() => jsonEncode({
@@ -303,6 +330,7 @@ class ReportConfig {
         'averages': averages,
         'pieChart': pieChart,
         'barChart': barChart,
+        'coverCards': coverCards,
       });
 
   /// Decodifica una config; devuelve los valores por defecto si el JSON es
@@ -314,6 +342,12 @@ class ReportConfig {
       List<int> ids(String key) => (m[key] as List<dynamic>? ?? const [])
           .map((e) => (e as num).toInt())
           .toList();
+      List<String> strings(String key, List<String> def) {
+        final raw = m[key] as List<dynamic>?;
+        if (raw == null) return def;
+        return raw.map((e) => e as String).toList();
+      }
+
       bool flag(String key, bool def) => m[key] as bool? ?? def;
       return ReportConfig(
         flow: enumByName(ReportFlow.values, m['flow'] as String?, ReportFlow.both),
@@ -340,6 +374,7 @@ class ReportConfig {
         averages: flag('averages', false),
         pieChart: flag('pieChart', true),
         barChart: flag('barChart', true),
+        coverCards: strings('coverCards', kDefaultReportCoverCards),
       );
     } catch (_) {
       return const ReportConfig();
@@ -409,6 +444,8 @@ class ReportData {
     required this.evolution,
     required this.comparison,
     required this.averages,
+    this.maxExpense,
+    this.maxIncome,
   });
 
   final ReportOptions options;
@@ -455,6 +492,12 @@ class ReportData {
 
   /// Medias y récords del periodo (null si no se pidió).
   final ReportAverages? averages;
+
+  /// Mayor gasto/ingreso del periodo (independiente de si se pidió la sección
+  /// "Medias y récords": se calculan gratis al recorrer los movimientos, y los
+  /// usa también la tarjeta "Mayor gasto" de la portada).
+  final ExtremeMovement? maxExpense;
+  final ExtremeMovement? maxIncome;
 }
 
 /// Calcula los datos de un informe a partir de la base de datos.
@@ -573,9 +616,12 @@ class ReportService {
 
     final evolution = _buildEvolution(txns, o.granularity);
 
-    // Comparativa con el periodo anterior equivalente.
+    // Comparativa con el periodo anterior equivalente. Se calcula también si
+    // solo se pidió como tarjeta de la portada (independiente de la sección
+    // "Comparativa"), para que la portada sea autosuficiente.
+    final wantsComparison = o.comparison || o.coverCards.contains('blockComparison');
     ReportComparison? comparison;
-    if (o.comparison) {
+    if (wantsComparison) {
       final span = o.to.difference(o.from);
       final prevTo = o.from.subtract(const Duration(milliseconds: 1));
       final prevFrom = prevTo.subtract(span);
@@ -588,9 +634,11 @@ class ReportService {
       comparison = ReportComparison(income: pi, expense: pe);
     }
 
-    // Medias y récords.
+    // Medias y récords. Igual que la comparativa: también se calcula si solo
+    // se pidió la tarjeta de portada correspondiente.
+    final wantsAverages = o.averages || o.coverCards.contains('blockAverages');
     ReportAverages? averages;
-    if (o.averages) {
+    if (wantsAverages) {
       final days = o.to.difference(o.from).inDays + 1;
       final safeDays = days <= 0 ? 1 : days;
       averages = ReportAverages(
@@ -619,6 +667,8 @@ class ReportService {
       evolution: evolution,
       comparison: comparison,
       averages: averages,
+      maxExpense: maxExpense,
+      maxIncome: maxIncome,
     );
   }
 

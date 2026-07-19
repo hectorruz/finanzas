@@ -275,6 +275,16 @@ red" por alcanzabilidad del admin guardado; sin descubrimiento mDNS). Con
 
 ### Webapp de escritorio (fase 4)
 
+> **Regla: si una funcionalidad existe en móvil y en la webapp, se actualizan
+> juntas.** La web ha tenido secciones que fueron a la zaga del móvil (p. ej.
+> el informe: durante un tiempo el selector de tipo de movimiento de la web no
+> ofrecía "Ambos" aunque el móvil sí, y las opciones no se guardaban). Cuando
+> toques una feature compartida (informe, tarjetas del dashboard, ajustes que
+> viajan por `/api/settings`, etc.), aplica el cambio en los dos sitios en el
+> mismo commit — no lo dejes para "después". Si de verdad solo aplica a una
+> plataforma, dilo explícitamente en el commit/PR para que quede claro que no
+> es un olvido.
+
 Usar la app desde el ordenador (`lib/features/web/`, entrypoint `lib/main_web.dart`).
 Es una app Flutter **web aparte**: no abre Isar ni monta `FinanzasApp`; habla con
 el móvil por HTTP con `WebApiClient`, reutilizando el emparejamiento por PIN del
