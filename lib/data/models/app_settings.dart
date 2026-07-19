@@ -197,6 +197,14 @@ class AppSettings {
   /// o el PIN/patrón/contraseña del teléfono) al abrirse y al volver de fondo.
   bool appLockEnabled = false;
 
+  /// Privacidad estilo banca: oculta el contenido en la vista de tareas/recientes
+  /// (`FLAG_SECURE`, que además bloquea las capturas de pantalla) y muestra un
+  /// overlay difuminado al pasar a segundo plano. `null` = **activado** por
+  /// defecto: un `bool` no-nullable nuevo se rellenaría con `false` en la fila de
+  /// ajustes ya existente (hermano del sello `Int.MIN` de los int), y queremos que
+  /// salga activado también en instalaciones previas. Leer con `?? true`.
+  bool? secureScreenEnabled;
+
   // --- Informe ---
 
   /// Configuración del generador de informes serializada en JSON (secciones,

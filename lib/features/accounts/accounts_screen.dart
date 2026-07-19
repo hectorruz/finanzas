@@ -4,10 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/icons/app_icons.dart';
 import '../../core/router/app_router.dart';
+import '../../data/models/account.dart';
+import '../../data/models/enums.dart';
 import '../../data/repositories/account_repository.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/money_text.dart';
 import 'account_editor_screen.dart';
+import 'deposit_math.dart';
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -46,9 +49,7 @@ class AccountsScreen extends ConsumerWidget {
                         size: isRoot ? 24 : 18, color: Color(a.colorValue)),
                   ),
                   title: Text(a.name),
-                  subtitle: Text(a.note.isNotEmpty
-                      ? '${_typeLabel(a.type.name)} · ${a.note}'
-                      : _typeLabel(a.type.name)),
+                  subtitle: Text(_subtitleFor(a)),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -90,6 +91,22 @@ class AccountsScreen extends ConsumerWidget {
         'bank' => 'Banco',
         'cash' => 'Efectivo',
         'investment' => 'Inversiones',
+        'deposit' => 'Depósito',
         _ => type,
       };
+
+  /// Subtítulo: tipo (+ nota) y, para depósitos, el estado de vencimiento.
+  String _subtitleFor(Account a) {
+    final parts = <String>[_typeLabel(a.type.name)];
+    if (a.type == AccountType.deposit) {
+      final days = daysUntilMaturity(a.depositEndDate);
+      if (days != null) {
+        parts.add(days < 0
+            ? 'vencido'
+            : (days == 0 ? 'vence hoy' : 'vence en $days días'));
+      }
+    }
+    if (a.note.isNotEmpty) parts.add(a.note);
+    return parts.join(' · ');
+  }
 }

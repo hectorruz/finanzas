@@ -6,12 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/platform/secure_screen.dart';
 import '../../core/router/app_router.dart';
 import '../../data/backup_service.dart';
 import '../../data/repositories/recurring_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../shared/widgets/icon_color_picker.dart';
 import '../security/app_lock_service.dart';
+import '../security/privacy_screen_gate.dart';
 import '../sync/sync_service.dart';
 import 'goals_screen.dart';
 
@@ -129,6 +131,18 @@ class SettingsScreen extends ConsumerWidget {
                 'Pide tu huella o el PIN del teléfono al abrir la app'),
             value: settings.appLockEnabled,
             onChanged: (v) => _toggleAppLock(context, ref, v),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.visibility_off_outlined),
+            title: const Text('Ocultar en multitarea y capturas'),
+            subtitle: const Text(
+                'Difumina la app en la vista de tareas y bloquea las capturas '
+                'de pantalla, como las apps de banca'),
+            value: ref.watch(secureScreenEnabledProvider),
+            onChanged: (v) {
+              repo.update((s) => s.secureScreenEnabled = v);
+              SecureScreen.setEnabled(v);
+            },
           ),
           const Divider(),
           const _SectionHeader('Sincronización'),

@@ -106,6 +106,11 @@ class AccountDto implements WebTreeItem {
     this.includeInTotal = true,
     this.parentId,
     this.sortOrder = 0,
+    this.depositRateBps,
+    this.depositStartDate,
+    this.depositEndDate,
+    this.depositPayout = DepositPayout.atMaturity,
+    this.depositAutoRenew = false,
   });
 
   @override
@@ -128,6 +133,13 @@ class AccountDto implements WebTreeItem {
   @override
   final int sortOrder;
 
+  // --- Depósito a plazo (solo si type == AccountType.deposit) ---
+  final int? depositRateBps;
+  final DateTime? depositStartDate;
+  final DateTime? depositEndDate;
+  final DepositPayout depositPayout;
+  final bool depositAutoRenew;
+
   bool get isSubaccount => parentId != null;
 
   static AccountDto fromJson(Map<String, dynamic> m) => AccountDto(
@@ -145,7 +157,16 @@ class AccountDto implements WebTreeItem {
         includeInTotal: m['includeInTotal'] as bool? ?? true,
         parentId: m['parentId'] as int?,
         sortOrder: m['sortOrder'] as int? ?? 0,
+        depositRateBps: m['depositRateBps'] as int?,
+        depositStartDate: _parseDate(m['depositStartDate'] as String?),
+        depositEndDate: _parseDate(m['depositEndDate'] as String?),
+        depositPayout: enumByName(DepositPayout.values,
+            m['depositPayout'] as String?, DepositPayout.atMaturity),
+        depositAutoRenew: m['depositAutoRenew'] as bool? ?? false,
       );
+
+  static DateTime? _parseDate(String? s) =>
+      (s == null || s.isEmpty) ? null : DateTime.tryParse(s);
 
   Map<String, dynamic> toJson() => {
         'name': name,
@@ -159,6 +180,11 @@ class AccountDto implements WebTreeItem {
         'includeInTotal': includeInTotal,
         'parentId': parentId,
         'sortOrder': sortOrder,
+        'depositRateBps': depositRateBps,
+        'depositStartDate': depositStartDate?.toIso8601String(),
+        'depositEndDate': depositEndDate?.toIso8601String(),
+        'depositPayout': depositPayout.name,
+        'depositAutoRenew': depositAutoRenew,
       };
 }
 

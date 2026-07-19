@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
+import '../../../core/money/money.dart';
 import '../../../data/models/enums.dart';
+import '../../accounts/deposit_math.dart';
 import '../web_models.dart';
 import '../web_providers.dart';
 import '../widgets/web_amount_field.dart';
@@ -33,6 +36,14 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
   bool _busy = false;
   String? _error;
 
+  // Campos de depósito (solo si _type == AccountType.deposit).
+  late final TextEditingController _rate;
+  int? _depositRateBps;
+  DateTime? _depositStartDate;
+  DateTime? _depositEndDate;
+  DepositPayout _depositPayout = DepositPayout.atMaturity;
+  bool _depositAutoRenew = false;
+
   @override
   void initState() {
     super.initState();
@@ -46,13 +57,52 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
     _archived = e?.archived ?? false;
     _color = e?.colorValue ?? 0xFF2196F3;
     _icon = e?.iconName ?? 'account_balance';
+    _depositRateBps = e?.depositRateBps;
+    _rate = TextEditingController(
+        text: e?.depositRateBps == null
+            ? ''
+            : formatRateBps(e!.depositRateBps).replaceAll(' %', ''));
+    _depositStartDate = e?.depositStartDate;
+    _depositEndDate = e?.depositEndDate;
+    _depositPayout = e?.depositPayout ?? DepositPayout.atMaturity;
+    _depositAutoRenew = e?.depositAutoRenew ?? false;
   }
 
   @override
   void dispose() {
     _name.dispose();
     _note.dispose();
+    _rate.dispose();
     super.dispose();
+  }
+
+  void _parseRate(String raw) {
+    final t = raw.trim().replaceAll(',', '.');
+    if (t.isEmpty) {
+      _depositRateBps = null;
+      return;
+    }
+    final pct = double.tryParse(t);
+    _depositRateBps = pct == null ? null : (pct * 100).round();
+  }
+
+  Future<void> _pickDate({required bool isStart}) async {
+    final now = DateTime.now();
+    final initial = (isStart ? _depositStartDate : _depositEndDate) ?? now;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(now.year - 20),
+      lastDate: DateTime(now.year + 30),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (isStart) {
+        _depositStartDate = picked;
+      } else {
+        _depositEndDate = picked;
+      }
+    });
   }
 
   Future<void> _save() async {
@@ -65,6 +115,8 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
       _busy = true;
       _error = null;
     });
+    final isDeposit = _type == AccountType.deposit;
+    if (isDeposit) _parseRate(_rate.text);
     final dto = AccountDto(
       name: name,
       type: _type,
@@ -76,6 +128,11 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
       colorValue: _color,
       iconName: _icon,
       sortOrder: widget.existing?.sortOrder ?? 0,
+      depositRateBps: isDeposit ? _depositRateBps : null,
+      depositStartDate: isDeposit ? _depositStartDate : null,
+      depositEndDate: isDeposit ? _depositEndDate : null,
+      depositPayout: isDeposit ? _depositPayout : DepositPayout.atMaturity,
+      depositAutoRenew: isDeposit && _depositAutoRenew,
     );
     final client = ref.read(webClientProvider)!;
     try {
@@ -120,6 +177,81 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
     if (mounted) Navigator.pop(context);
   }
 
+  /// Campos del depósito (TAE, fechas, liquidación, renovación) + interés bruto
+  /// estimado. Réplica web de los del editor móvil.
+  List<Widget> _depositFields(BuildContext context) {
+    final df = DateFormat('d MMM yyyy', 'es');
+    _parseRate(_rate.text);
+    final interest = estimatedGrossInterestCents(
+      principalCents: _initialCents,
+      rateBps: _depositRateBps,
+      start: _depositStartDate,
+      end: _depositEndDate,
+    );
+    return [
+      const SizedBox(height: 12),
+      TextField(
+        controller: _rate,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(
+          labelText: 'TAE (%)',
+          hintText: 'p. ej. 3,75',
+        ),
+        onChanged: (v) => setState(() => _parseRate(v)),
+      ),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.event_available),
+        title: const Text('Fecha de apertura'),
+        subtitle: Text(_depositStartDate == null
+            ? 'Sin definir'
+            : df.format(_depositStartDate!)),
+        trailing: const Icon(Icons.edit_calendar_outlined),
+        onTap: () => _pickDate(isStart: true),
+      ),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.event_busy),
+        title: const Text('Fecha de vencimiento'),
+        subtitle: Text(_depositEndDate == null
+            ? 'Sin definir'
+            : df.format(_depositEndDate!)),
+        trailing: const Icon(Icons.edit_calendar_outlined),
+        onTap: () => _pickDate(isStart: false),
+      ),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<DepositPayout>(
+        value: _depositPayout,
+        decoration:
+            const InputDecoration(labelText: 'Liquidación de intereses'),
+        items: [
+          for (final p in DepositPayout.values)
+            DropdownMenuItem(value: p, child: Text(p.label)),
+        ],
+        onChanged: (v) => setState(() => _depositPayout = v ?? _depositPayout),
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: _depositAutoRenew,
+        title: const Text('Renovación automática'),
+        onChanged: (v) => setState(() => _depositAutoRenew = v),
+      ),
+      if (interest > 0)
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            leading: const Icon(Icons.savings_outlined),
+            title: const Text('Interés bruto estimado'),
+            trailing: Text(
+              Money(interest).format(),
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+          ),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final accounts = ref.watch(webAccountsProvider).valueOrNull ?? const [];
@@ -162,6 +294,8 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
                   ButtonSegment(value: AccountType.cash, label: Text('Efectivo')),
                   ButtonSegment(
                       value: AccountType.investment, label: Text('Inversión')),
+                  ButtonSegment(
+                      value: AccountType.deposit, label: Text('Depósito')),
                 ],
                 selected: {_type},
                 onSelectionChanged: (s) => setState(() => _type = s.first),
@@ -177,10 +311,13 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
               ),
               const SizedBox(height: 14),
               WebAmountField(
-                label: 'Saldo inicial',
+                label: _type == AccountType.deposit
+                    ? 'Capital del depósito'
+                    : 'Saldo inicial',
                 initialCents: _initialCents == 0 ? null : _initialCents,
-                onChangedCents: (c) => _initialCents = c ?? 0,
+                onChangedCents: (c) => setState(() => _initialCents = c ?? 0),
               ),
+              if (_type == AccountType.deposit) ..._depositFields(context),
               const SizedBox(height: 6),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

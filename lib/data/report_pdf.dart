@@ -66,13 +66,14 @@ Future<File> buildReportPdf(ReportData data) async {
 
   // --- Página dashboard (portada personalizable) ---
   if (o.dashboardPage) {
+    final cards = o.effectiveCoverCards;
     final kpiTiles = [
-      for (final key in o.coverCards)
+      for (final key in cards)
         if (_kpiCoverKeys.contains(key))
           if (_kpiTileFor(key, data) case final w?) w,
     ];
     final blocks = [
-      for (final key in o.coverCards)
+      for (final key in cards)
         if (!_kpiCoverKeys.contains(key))
           if (_blockFor(key, data, pie) case final w?) w,
     ];

@@ -40,6 +40,11 @@ class SyncCodec {
           'includeInTotal': a.includeInTotal,
           'sortOrder': a.sortOrder,
           'parentUuid': uuidOf(SyncCollection.account, a.parentId),
+          'depositRateBps': a.depositRateBps,
+          'depositStartDate': a.depositStartDate?.toIso8601String(),
+          'depositEndDate': a.depositEndDate?.toIso8601String(),
+          'depositPayout': a.depositPayout.name,
+          'depositAutoRenew': a.depositAutoRenew,
         },
       );
 
@@ -164,8 +169,17 @@ class SyncCodec {
       ..archived = d['archived'] as bool? ?? false
       ..includeInTotal = d['includeInTotal'] as bool? ?? true
       ..sortOrder = d['sortOrder'] as int? ?? 0
-      ..parentId = idOf(SyncCollection.account, d['parentUuid'] as String?);
+      ..parentId = idOf(SyncCollection.account, d['parentUuid'] as String?)
+      ..depositRateBps = d['depositRateBps'] as int?
+      ..depositStartDate = _parseDate(d['depositStartDate'] as String?)
+      ..depositEndDate = _parseDate(d['depositEndDate'] as String?)
+      ..depositPayout = enumByName(
+          DepositPayout.values, d['depositPayout'] as String?, DepositPayout.atMaturity)
+      ..depositAutoRenew = d['depositAutoRenew'] as bool? ?? false;
   }
+
+  static DateTime? _parseDate(String? s) =>
+      (s == null || s.isEmpty) ? null : DateTime.tryParse(s);
 
   void applyCategory(Category target, EntityChange c, IdOf idOf) {
     final d = c.data;

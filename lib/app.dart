@@ -10,12 +10,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/db/isar_provider.dart';
 import 'core/notifications/local_notifications.dart';
 import 'core/platform/quick_tile.dart';
+import 'core/platform/secure_screen.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/settings_repository.dart';
 import 'features/backup/backup_scheduler_service.dart';
 import 'features/payments/payment_ingest_service.dart';
 import 'features/security/app_lock_gate.dart';
+import 'features/security/privacy_screen_gate.dart';
 import 'features/sync/net/sync_foreground_service.dart';
 import 'features/sync/sync_service.dart';
 
@@ -53,6 +55,8 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
     // intento silencioso de ponerse al día con el admin sin que el usuario
     // tenga que entrar a propósito a la pantalla de sync.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Aplica el estado inicial de la pantalla segura (FLAG_SECURE) al arrancar.
+      SecureScreen.setEnabled(ref.read(secureScreenEnabledProvider));
       final action = await QuickTile.getInitialAction();
       if (action != null) _handleQuickAction(action);
       await _checkNotificationLaunch();
@@ -155,6 +159,12 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
     final settings = ref.watch(currentSettingsProvider);
     final themeMode = ref.watch(themeModeProvider);
 
+    // Espeja el ajuste de pantalla segura al nativo (FLAG_SECURE) al togglearlo
+    // en Ajustes (el valor inicial se aplica en initState, ver más abajo).
+    ref.listen<bool>(secureScreenEnabledProvider, (_, next) {
+      SecureScreen.setEnabled(next);
+    });
+
     final fallbackSeed = Color(settings.seedColorValue);
 
     return DynamicColorBuilder(
@@ -177,8 +187,9 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
           title: 'Finanzas',
           debugShowCheckedModeBanner: false,
           routerConfig: router,
-          builder: (context, child) =>
-              AppLockGate(child: child ?? const SizedBox.shrink()),
+          builder: (context, child) => PrivacyScreenGate(
+            child: AppLockGate(child: child ?? const SizedBox.shrink()),
+          ),
           themeMode: themeMode,
           theme: AppTheme.light(lightScheme),
           darkTheme: AppTheme.dark(darkScheme, amoled: settings.amoled),

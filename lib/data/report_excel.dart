@@ -234,7 +234,7 @@ Future<File> buildReportExcel(ReportData data) async {
     w.title('Informe Finanzas');
     w.blank();
     w.title('Resumen del periodo');
-    for (final key in o.coverCards) {
+    for (final key in o.effectiveCoverCards) {
       _resumenCard(w, s, key, data);
     }
     s.getRangeByIndex(1, 1, 1, 3).columnWidth = 26;

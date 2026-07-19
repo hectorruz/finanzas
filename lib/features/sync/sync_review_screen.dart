@@ -457,6 +457,11 @@ const _labels = <String, String>{
   'isDefault': 'Por defecto',
   'sortOrder': 'Orden',
   'planMode': 'Modo',
+  'depositRateBps': 'TAE',
+  'depositStartDate': 'Apertura',
+  'depositEndDate': 'Vencimiento',
+  'depositPayout': 'Liquidación',
+  'depositAutoRenew': 'Renovación',
 };
 
 String syncFieldLabel(String key) => _labels[key] ?? key;
@@ -464,7 +469,14 @@ String syncFieldLabel(String key) => _labels[key] ?? key;
 String syncFormatValue(String key, dynamic value) {
   if (value == null) return '—';
   if (key.endsWith('Cents') && value is int) return Money(value).format();
-  if (const {'date', 'nextDate', 'endDate', 'deadline'}.contains(key) &&
+  if (const {
+        'date',
+        'nextDate',
+        'endDate',
+        'deadline',
+        'depositStartDate',
+        'depositEndDate',
+      }.contains(key) &&
       value is String) {
     final d = DateTime.tryParse(value);
     if (d != null) return DateFormat('dd/MM/yyyy').format(d);

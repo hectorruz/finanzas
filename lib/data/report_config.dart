@@ -164,6 +164,13 @@ class ReportOptions {
   /// antigua tras quitar un tipo de tarjeta) se ignora al renderizar.
   final List<String> coverCards;
 
+  /// Tarjetas efectivas de la portada: si [coverCards] está vacía se usan las
+  /// de por defecto, igual que hace el editor (`ReportCoverCardsEditor`). Así el
+  /// editor y el generador coinciden: vaciar las tarjetas **no** deja una
+  /// portada en blanco (para quitar la portada se usa [dashboardPage]).
+  List<String> get effectiveCoverCards =>
+      coverCards.isEmpty ? kDefaultReportCoverCards : coverCards;
+
   /// ¿Hay alguna sección seleccionada?
   bool get anySection =>
       dashboardPage ||

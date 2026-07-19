@@ -33,6 +33,11 @@ class ApiSerializer {
         'includeInTotal': a.includeInTotal,
         'parentId': a.parentId,
         'sortOrder': a.sortOrder,
+        'depositRateBps': a.depositRateBps,
+        'depositStartDate': a.depositStartDate?.toIso8601String(),
+        'depositEndDate': a.depositEndDate?.toIso8601String(),
+        'depositPayout': a.depositPayout.name,
+        'depositAutoRenew': a.depositAutoRenew,
       };
 
   void applyAccount(Account t, Map<String, dynamic> m) {
@@ -47,8 +52,22 @@ class ApiSerializer {
       ..archived = m['archived'] as bool? ?? t.archived
       ..includeInTotal = m['includeInTotal'] as bool? ?? t.includeInTotal
       ..parentId = m.containsKey('parentId') ? m['parentId'] as int? : t.parentId
-      ..sortOrder = m['sortOrder'] as int? ?? t.sortOrder;
+      ..sortOrder = m['sortOrder'] as int? ?? t.sortOrder
+      ..depositRateBps =
+          m.containsKey('depositRateBps') ? m['depositRateBps'] as int? : t.depositRateBps
+      ..depositStartDate = m.containsKey('depositStartDate')
+          ? _parseDate(m['depositStartDate'] as String?)
+          : t.depositStartDate
+      ..depositEndDate = m.containsKey('depositEndDate')
+          ? _parseDate(m['depositEndDate'] as String?)
+          : t.depositEndDate
+      ..depositPayout = enumByName(
+          DepositPayout.values, m['depositPayout'] as String?, t.depositPayout)
+      ..depositAutoRenew = m['depositAutoRenew'] as bool? ?? t.depositAutoRenew;
   }
+
+  static DateTime? _parseDate(String? s) =>
+      (s == null || s.isEmpty) ? null : DateTime.tryParse(s);
 
   // --- Categorías ---
 

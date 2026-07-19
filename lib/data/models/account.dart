@@ -55,6 +55,25 @@ class Account implements Syncable {
   /// Orden de aparición en listados.
   int sortOrder = 0;
 
+  // --- Depósito a plazo (solo relevante si [type] == AccountType.deposit) ---
+
+  /// TAE en puntos básicos (1 % = 100 bps; 3,75 % = 375). Entero para no perder
+  /// precisión con dobles. `null` = sin definir.
+  int? depositRateBps;
+
+  /// Fecha de apertura del depósito.
+  DateTime? depositStartDate;
+
+  /// Fecha de vencimiento del depósito.
+  DateTime? depositEndDate;
+
+  /// Cómo se liquidan los intereses. Se persiste por nombre.
+  @Enumerated(EnumType.name)
+  DepositPayout depositPayout = DepositPayout.atMaturity;
+
+  /// Si el depósito se renueva automáticamente al vencer.
+  bool depositAutoRenew = false;
+
   Account();
 
   /// ¿Es una subcuenta (cuelga de otra)?
