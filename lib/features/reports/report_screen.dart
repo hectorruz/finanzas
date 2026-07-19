@@ -332,10 +332,21 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
           shrinkWrap: true,
           padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(ctx).bottom),
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Text('Filtrar por cuentas',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('Filtrar por cuentas',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  if (selected.isNotEmpty)
+                    TextButton(
+                      onPressed: () => setSheet(() => selected.clear()),
+                      child: const Text('Limpiar'),
+                    ),
+                ],
+              ),
             ),
             for (final a in accounts)
               CheckboxListTile(
@@ -363,10 +374,21 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
           shrinkWrap: true,
           padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(ctx).bottom),
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Text('Filtrar por categorías',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('Filtrar por categorías',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  if (selected.isNotEmpty)
+                    TextButton(
+                      onPressed: () => setSheet(() => selected.clear()),
+                      child: const Text('Limpiar'),
+                    ),
+                ],
+              ),
             ),
             for (final cat in categories)
               CheckboxListTile(

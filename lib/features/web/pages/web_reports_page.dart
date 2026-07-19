@@ -544,6 +544,10 @@ class _WebReportsPageState extends ConsumerState<WebReportsPage> {
             ),
           ),
           actions: [
+            if (selected.isNotEmpty)
+              TextButton(
+                  onPressed: () => setSheet(() => selected.clear()),
+                  child: const Text('Limpiar')),
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Hecho')),
@@ -604,6 +608,10 @@ class _WebReportsPageState extends ConsumerState<WebReportsPage> {
             ),
           ),
           actions: [
+            if (selected.isNotEmpty)
+              TextButton(
+                  onPressed: () => setSheet(() => selected.clear()),
+                  child: const Text('Limpiar')),
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Hecho')),

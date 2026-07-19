@@ -187,8 +187,21 @@ class _FinanzasAppState extends ConsumerState<FinanzasApp>
           title: 'Finanzas',
           debugShowCheckedModeBanner: false,
           routerConfig: router,
-          builder: (context, child) => PrivacyScreenGate(
-            child: AppLockGate(child: child ?? const SizedBox.shrink()),
+          builder: (context, child) => SafeArea(
+            top: false,
+            left: false,
+            right: false,
+            // Reserva la franja de la barra de navegación de Android para
+            // toda la app (pantallas, diálogos, bottom sheets y el overlay
+            // de los desplegables): en navegación por 3 botones esa franja
+            // es opaca y tapa cualquier contenido que se dibuje ahí, y el
+            // cálculo interno de Flutter para posicionar el menú de un
+            // DropdownButton no la tiene en cuenta (usa el alto bruto de la
+            // pantalla). En navegación por gestos el inset es pequeño y este
+            // SafeArea no le resta espacio útil de forma perceptible.
+            child: PrivacyScreenGate(
+              child: AppLockGate(child: child ?? const SizedBox.shrink()),
+            ),
           ),
           themeMode: themeMode,
           theme: AppTheme.light(lightScheme),
