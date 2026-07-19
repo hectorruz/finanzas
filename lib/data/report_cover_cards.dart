@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'report_service.dart';
+import 'report_config.dart';
 
 /// Tipo de tarjeta de la portada: decide dónde y cómo se agrupa en el
 /// renderizado (las KPI van en la rejilla superior; gráficos y análisis se

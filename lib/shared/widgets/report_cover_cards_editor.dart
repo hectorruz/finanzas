@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../data/report_config.dart';
 import '../../data/report_cover_cards.dart';
-import '../../data/report_service.dart';
 
 /// Editor de las tarjetas de la portada personalizable del informe
 /// (`ReportConfig.coverCards`). Reordenable (arrastra para cambiar el orden

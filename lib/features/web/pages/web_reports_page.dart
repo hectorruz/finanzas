@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../data/models/enums.dart';
-import '../../../data/report_service.dart';
+import '../../../data/report_config.dart';
 import '../../../shared/widgets/report_cover_cards_editor.dart';
 import '../analytics/web_analytics.dart';
 import '../web_download.dart';
