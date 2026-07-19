@@ -194,6 +194,12 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
       start: _depositStartDate,
       end: _depositEndDate,
     );
+    final netInterest = estimatedNetInterestCents(
+      principalCents: _initialCents,
+      rateBps: _depositRateBps,
+      start: _depositStartDate,
+      end: _depositEndDate,
+    );
     return [
       const SizedBox(height: 16),
       TextFormField(
@@ -247,15 +253,31 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
       if (interest > 0)
         Card(
           margin: EdgeInsets.zero,
-          child: ListTile(
-            leading: const Icon(Icons.savings_outlined),
-            title: const Text('Interés bruto estimado'),
-            subtitle: const Text('Interés simple sobre el capital y el plazo'),
-            trailing: Text(
-              Money(interest).format(),
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 16),
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.savings_outlined),
+                title: const Text('Interés bruto estimado'),
+                subtitle:
+                    const Text('Interés simple sobre el capital y el plazo'),
+                trailing: Text(
+                  Money(interest).format(),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.receipt_long_outlined),
+                title: const Text('Interés neto estimado'),
+                subtitle: const Text('Tras retención del 19 % de IRPF'),
+                trailing: Text(
+                  Money(netInterest).format(),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+              ),
+            ],
           ),
         ),
     ];

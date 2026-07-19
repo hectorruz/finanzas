@@ -52,6 +52,39 @@ void main() {
     });
   });
 
+  group('estimatedNetInterestCents', () {
+    test('aplica el 19 % de retención sobre el bruto', () {
+      // 10.000 € al 3,75 % durante 365 días: bruto 37.500 c, neto 81 %.
+      final net = estimatedNetInterestCents(
+        principalCents: 1000000,
+        rateBps: 375,
+        start: DateTime(2026, 1, 1),
+        end: DateTime(2027, 1, 1),
+      );
+      expect(net, (37500 * 0.81).round());
+    });
+
+    test('no encadena el redondeo del bruto (mejor precisión decimal)', () {
+      // Un bruto cuyo valor sin redondear no es un entero de céntimos.
+      final grossRaw = 1000000 * 400 * 182 / (10000 * 365);
+      final net = estimatedNetInterestCents(
+        principalCents: 1000000,
+        rateBps: 400,
+        start: DateTime(2026, 1, 1),
+        end: DateTime(2026, 1, 1).add(const Duration(days: 182)),
+      );
+      expect(net, (grossRaw * 0.81).round());
+    });
+
+    test('datos incompletos o rango no positivo → 0', () {
+      expect(
+        estimatedNetInterestCents(
+            principalCents: 1000000, rateBps: null, start: null, end: null),
+        0,
+      );
+    });
+  });
+
   group('formatRateBps', () {
     test('recorta decimales innecesarios', () {
       expect(formatRateBps(375), '3,75 %');
