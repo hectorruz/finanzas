@@ -55,6 +55,12 @@ class Account implements Syncable {
   /// Orden de aparición en listados.
   int sortOrder = 0;
 
+  /// Banco/cuenta donde está suscrito el depósito o la Letra del Tesoro, cuando
+  /// **no** es subcuenta (si lo es, el banco es su [parentId]). El interés neto
+  /// (depósito) o la ganancia (letra) se suman al saldo de esa cuenta. `null` =
+  /// sin asociar. Solo relevante para depósitos y letras.
+  int? bankAccountId;
+
   // --- Depósito a plazo (solo relevante si [type] == AccountType.deposit) ---
 
   /// TAE en puntos básicos (1 % = 100 bps; 3,75 % = 375). Entero para no perder
@@ -74,9 +80,23 @@ class Account implements Syncable {
   /// Si el depósito se renueva automáticamente al vencer.
   bool depositAutoRenew = false;
 
+  // --- Letra del Tesoro (solo relevante si [type] == AccountType.treasuryBill) ---
+  // Las letras van a descuento: se reutiliza [initialBalanceCents] como precio de
+  // compra, [depositStartDate] como fecha de compra y [depositEndDate] como
+  // vencimiento.
+
+  /// Importe nominal a cobrar al vencimiento (en céntimos). La ganancia bruta es
+  /// `nominalCents - initialBalanceCents`. `null` = sin definir.
+  int? nominalCents;
+
   Account();
 
   /// ¿Es una subcuenta (cuelga de otra)?
   @ignore
   bool get isSubaccount => parentId != null;
+
+  /// Banco efectivo donde está el depósito/letra: si es subcuenta, su padre; si
+  /// no, el [bankAccountId] elegido a mano. `null` si no hay ninguno.
+  @ignore
+  int? get holdingBankId => isSubaccount ? parentId : bankAccountId;
 }

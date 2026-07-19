@@ -32,12 +32,14 @@ class ApiSerializer {
         'archived': a.archived,
         'includeInTotal': a.includeInTotal,
         'parentId': a.parentId,
+        'bankAccountId': a.bankAccountId,
         'sortOrder': a.sortOrder,
         'depositRateBps': a.depositRateBps,
         'depositStartDate': a.depositStartDate?.toIso8601String(),
         'depositEndDate': a.depositEndDate?.toIso8601String(),
         'depositPayout': a.depositPayout.name,
         'depositAutoRenew': a.depositAutoRenew,
+        'nominalCents': a.nominalCents,
       };
 
   void applyAccount(Account t, Map<String, dynamic> m) {
@@ -52,6 +54,9 @@ class ApiSerializer {
       ..archived = m['archived'] as bool? ?? t.archived
       ..includeInTotal = m['includeInTotal'] as bool? ?? t.includeInTotal
       ..parentId = m.containsKey('parentId') ? m['parentId'] as int? : t.parentId
+      ..bankAccountId = m.containsKey('bankAccountId')
+          ? m['bankAccountId'] as int?
+          : t.bankAccountId
       ..sortOrder = m['sortOrder'] as int? ?? t.sortOrder
       ..depositRateBps =
           m.containsKey('depositRateBps') ? m['depositRateBps'] as int? : t.depositRateBps
@@ -63,7 +68,9 @@ class ApiSerializer {
           : t.depositEndDate
       ..depositPayout = enumByName(
           DepositPayout.values, m['depositPayout'] as String?, t.depositPayout)
-      ..depositAutoRenew = m['depositAutoRenew'] as bool? ?? t.depositAutoRenew;
+      ..depositAutoRenew = m['depositAutoRenew'] as bool? ?? t.depositAutoRenew
+      ..nominalCents =
+          m.containsKey('nominalCents') ? m['nominalCents'] as int? : t.nominalCents;
   }
 
   static DateTime? _parseDate(String? s) =>

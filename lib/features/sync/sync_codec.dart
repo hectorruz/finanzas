@@ -40,11 +40,13 @@ class SyncCodec {
           'includeInTotal': a.includeInTotal,
           'sortOrder': a.sortOrder,
           'parentUuid': uuidOf(SyncCollection.account, a.parentId),
+          'bankUuid': uuidOf(SyncCollection.account, a.bankAccountId),
           'depositRateBps': a.depositRateBps,
           'depositStartDate': a.depositStartDate?.toIso8601String(),
           'depositEndDate': a.depositEndDate?.toIso8601String(),
           'depositPayout': a.depositPayout.name,
           'depositAutoRenew': a.depositAutoRenew,
+          'nominalCents': a.nominalCents,
         },
       );
 
@@ -170,12 +172,14 @@ class SyncCodec {
       ..includeInTotal = d['includeInTotal'] as bool? ?? true
       ..sortOrder = d['sortOrder'] as int? ?? 0
       ..parentId = idOf(SyncCollection.account, d['parentUuid'] as String?)
+      ..bankAccountId = idOf(SyncCollection.account, d['bankUuid'] as String?)
       ..depositRateBps = d['depositRateBps'] as int?
       ..depositStartDate = _parseDate(d['depositStartDate'] as String?)
       ..depositEndDate = _parseDate(d['depositEndDate'] as String?)
       ..depositPayout = enumByName(
           DepositPayout.values, d['depositPayout'] as String?, DepositPayout.atMaturity)
-      ..depositAutoRenew = d['depositAutoRenew'] as bool? ?? false;
+      ..depositAutoRenew = d['depositAutoRenew'] as bool? ?? false
+      ..nominalCents = d['nominalCents'] as int?;
   }
 
   static DateTime? _parseDate(String? s) =>

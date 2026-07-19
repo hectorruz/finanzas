@@ -52,6 +52,14 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
   DepositPayout _depositPayout = DepositPayout.atMaturity;
   bool _depositAutoRenew = false;
 
+  // Banco asociado (depósitos y letras que no sean subcuenta) y nominal (letras).
+  int? _bankAccountId;
+  int _nominalCents = 0;
+
+  /// ¿Se está editando/creando una subcuenta? Si lo es, el banco es su padre y no
+  /// se muestra el selector de banco.
+  bool get _isSubaccount => (_existing?.parentId ?? widget.parentId) != null;
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +86,8 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
         _depositEndDate = acc.depositEndDate;
         _depositPayout = acc.depositPayout;
         _depositAutoRenew = acc.depositAutoRenew;
+        _bankAccountId = acc.bankAccountId;
+        _nominalCents = acc.nominalCents ?? 0;
       }
     }
     if (mounted) setState(() => _loading = false);
@@ -133,7 +143,14 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
       ..colorValue = _colorValue
       ..includeInTotal = _includeInTotal
       ..note = _noteController.text.trim()
-      ..parentId = _existing?.parentId ?? widget.parentId;
+      ..parentId = _existing?.parentId ?? widget.parentId
+      // El banco solo se guarda si no es subcuenta (si lo es, el banco es el
+      // padre) y solo para depósitos/letras.
+      ..bankAccountId = (_isSubaccount ||
+              (_type != AccountType.deposit &&
+                  _type != AccountType.treasuryBill))
+          ? null
+          : _bankAccountId;
     if (_type == AccountType.deposit) {
       _parseRate(_rateController.text);
       acc
@@ -141,16 +158,27 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
         ..depositStartDate = _depositStartDate
         ..depositEndDate = _depositEndDate
         ..depositPayout = _depositPayout
-        ..depositAutoRenew = _depositAutoRenew;
+        ..depositAutoRenew = _depositAutoRenew
+        ..nominalCents = null;
+    } else if (_type == AccountType.treasuryBill) {
+      // Letra del Tesoro: reutiliza fechas y precio de compra; sin TAE/liquidación.
+      acc
+        ..depositRateBps = null
+        ..depositStartDate = _depositStartDate
+        ..depositEndDate = _depositEndDate
+        ..depositPayout = DepositPayout.atMaturity
+        ..depositAutoRenew = false
+        ..nominalCents = _nominalCents == 0 ? null : _nominalCents;
     } else {
-      // Al dejar de ser depósito, limpiamos sus campos para no arrastrar datos
-      // obsoletos que confundirían en el detalle o en la sincronización.
+      // Al dejar de ser depósito/letra, limpiamos sus campos para no arrastrar
+      // datos obsoletos que confundirían en el detalle o en la sincronización.
       acc
         ..depositRateBps = null
         ..depositStartDate = null
         ..depositEndDate = null
         ..depositPayout = DepositPayout.atMaturity
-        ..depositAutoRenew = false;
+        ..depositAutoRenew = false
+        ..nominalCents = null;
     }
     await ref.read(accountRepositoryProvider).save(acc);
     if (mounted) Navigator.of(context).pop();
@@ -186,7 +214,6 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
   /// Campos específicos del depósito (TAE, fechas, liquidación, renovación) más
   /// el interés bruto estimado. Se muestran solo si el tipo es depósito.
   List<Widget> _depositFields() {
-    final df = DateFormat('d MMM yyyy', 'es');
     _parseRate(_rateController.text);
     final interest = estimatedGrossInterestCents(
       principalCents: _initialCents,
@@ -213,25 +240,9 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
         onChanged: (v) => setState(() => _parseRate(v)),
       ),
       const SizedBox(height: 8),
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.event_available),
-        title: const Text('Fecha de apertura'),
-        subtitle: Text(_depositStartDate == null
-            ? 'Sin definir'
-            : df.format(_depositStartDate!)),
-        trailing: const Icon(Icons.edit_calendar_outlined),
-        onTap: () => _pickDate(isStart: true),
-      ),
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.event_busy),
-        title: const Text('Fecha de vencimiento'),
-        subtitle: Text(_depositEndDate == null
-            ? 'Sin definir'
-            : df.format(_depositEndDate!)),
-        trailing: const Icon(Icons.edit_calendar_outlined),
-        onTap: () => _pickDate(isStart: false),
+      ..._datesFields(
+        startLabel: 'Fecha de apertura',
+        endLabel: 'Fecha de vencimiento',
       ),
       const SizedBox(height: 8),
       DropdownButtonFormField<DepositPayout>(
@@ -283,8 +294,119 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
     ];
   }
 
+  /// Campos específicos de una Letra del Tesoro: importe nominal + ganancia
+  /// bruta estimada (las fechas de compra/vencimiento se muestran en el bloque
+  /// común, ver [_datesFields]).
+  List<Widget> _treasuryFields() {
+    final gain = treasuryBillGainCents(
+      nominalCents: _nominalCents,
+      purchaseCents: _initialCents,
+    );
+    return [
+      const SizedBox(height: 16),
+      AmountField(
+        label: 'Importe nominal (al vencimiento)',
+        initialCents: _nominalCents == 0 ? null : _nominalCents,
+        onChangedCents: (c) => setState(() => _nominalCents = c ?? 0),
+        allowZero: true,
+      ),
+      const SizedBox(height: 8),
+      ..._datesFields(
+        startLabel: 'Fecha de compra',
+        endLabel: 'Fecha de vencimiento',
+      ),
+      if (gain > 0)
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            leading: const Icon(Icons.trending_up),
+            title: const Text('Ganancia estimada'),
+            subtitle: const Text(
+                'Nominal − precio de compra. Las Letras del Tesoro no tienen '
+                'retención en origen (rendimiento bruto)'),
+            trailing: Text(
+              Money(gain).format(),
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+          ),
+        ),
+    ];
+  }
+
+  /// Los dos date-tiles (compra/apertura y vencimiento), compartidos por
+  /// depósitos y letras.
+  List<Widget> _datesFields({
+    required String startLabel,
+    required String endLabel,
+  }) {
+    final df = DateFormat('d MMM yyyy', 'es');
+    return [
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.event_available),
+        title: Text(startLabel),
+        subtitle: Text(_depositStartDate == null
+            ? 'Sin definir'
+            : df.format(_depositStartDate!)),
+        trailing: const Icon(Icons.edit_calendar_outlined),
+        onTap: () => _pickDate(isStart: true),
+      ),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.event_busy),
+        title: Text(endLabel),
+        subtitle: Text(_depositEndDate == null
+            ? 'Sin definir'
+            : df.format(_depositEndDate!)),
+        trailing: const Icon(Icons.edit_calendar_outlined),
+        onTap: () => _pickDate(isStart: false),
+      ),
+    ];
+  }
+
+  /// Asociación de banco para depósitos/letras: si es subcuenta, un tile de solo
+  /// lectura con el padre; si no, un selector entre las cuentas banco/efectivo/
+  /// inversión.
+  Widget _bankAssociation(List<Account> accounts) {
+    if (_isSubaccount) {
+      final parentId = _existing?.parentId ?? widget.parentId;
+      final parent = accounts.where((a) => a.id == parentId).firstOrNull;
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.account_balance_outlined),
+        title: const Text('Suscrito en'),
+        subtitle: Text(parent?.name ?? 'su cuenta padre'),
+      );
+    }
+    final candidates = accounts
+        .where((a) =>
+            a.id != _existing?.id &&
+            a.type != AccountType.deposit &&
+            a.type != AccountType.treasuryBill)
+        .toList();
+    return DropdownButtonFormField<int?>(
+      value: candidates.any((a) => a.id == _bankAccountId)
+          ? _bankAccountId
+          : null,
+      decoration: const InputDecoration(
+        labelText: 'Banco donde está suscrito',
+        prefixIcon: Icon(Icons.account_balance_outlined),
+      ),
+      items: [
+        const DropdownMenuItem(value: null, child: Text('Ninguno')),
+        for (final a in candidates)
+          DropdownMenuItem(value: a.id, child: Text(a.name)),
+      ],
+      onChanged: (v) => setState(() => _bankAccountId = v),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final accounts = ref.watch(accountsProvider).valueOrNull ?? const <Account>[];
+    final isDepositOrBill =
+        _type == AccountType.deposit || _type == AccountType.treasuryBill;
     return Scaffold(
       appBar: AppBar(
         title: Text(_existing == null
@@ -329,20 +451,30 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
                           child: Text('Inversiones')),
                       DropdownMenuItem(
                           value: AccountType.deposit, child: Text('Depósito')),
+                      DropdownMenuItem(
+                          value: AccountType.treasuryBill,
+                          child: Text('Letra del Tesoro')),
                     ],
                     onChanged: (v) => setState(() => _type = v ?? _type),
                   ),
                   const SizedBox(height: 16),
                   AmountField(
-                    label: _type == AccountType.deposit
-                        ? 'Capital del depósito'
-                        : 'Saldo inicial',
+                    label: switch (_type) {
+                      AccountType.deposit => 'Capital del depósito',
+                      AccountType.treasuryBill => 'Precio de compra',
+                      _ => 'Saldo inicial',
+                    },
                     initialCents: _initialCents == 0 ? null : _initialCents,
                     onChangedCents: (c) =>
                         setState(() => _initialCents = c ?? 0),
                     allowZero: true,
                   ),
+                  if (isDepositOrBill) ...[
+                    const SizedBox(height: 16),
+                    _bankAssociation(accounts),
+                  ],
                   if (_type == AccountType.deposit) ..._depositFields(),
+                  if (_type == AccountType.treasuryBill) ..._treasuryFields(),
                   const SizedBox(height: 16),
                   IconColorPicker(
                     iconName: _iconName,

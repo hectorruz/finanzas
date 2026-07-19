@@ -105,12 +105,14 @@ class AccountDto implements WebTreeItem {
     this.archived = false,
     this.includeInTotal = true,
     this.parentId,
+    this.bankAccountId,
     this.sortOrder = 0,
     this.depositRateBps,
     this.depositStartDate,
     this.depositEndDate,
     this.depositPayout = DepositPayout.atMaturity,
     this.depositAutoRenew = false,
+    this.nominalCents,
   });
 
   @override
@@ -130,6 +132,9 @@ class AccountDto implements WebTreeItem {
   final bool includeInTotal;
   @override
   final int? parentId;
+
+  /// Banco/cuenta donde está suscrito el depósito o la letra (si no es subcuenta).
+  final int? bankAccountId;
   @override
   final int sortOrder;
 
@@ -139,6 +144,9 @@ class AccountDto implements WebTreeItem {
   final DateTime? depositEndDate;
   final DepositPayout depositPayout;
   final bool depositAutoRenew;
+
+  /// Importe nominal de la Letra del Tesoro (a cobrar al vencimiento).
+  final int? nominalCents;
 
   bool get isSubaccount => parentId != null;
 
@@ -156,6 +164,7 @@ class AccountDto implements WebTreeItem {
         archived: m['archived'] as bool? ?? false,
         includeInTotal: m['includeInTotal'] as bool? ?? true,
         parentId: m['parentId'] as int?,
+        bankAccountId: m['bankAccountId'] as int?,
         sortOrder: m['sortOrder'] as int? ?? 0,
         depositRateBps: m['depositRateBps'] as int?,
         depositStartDate: _parseDate(m['depositStartDate'] as String?),
@@ -163,6 +172,7 @@ class AccountDto implements WebTreeItem {
         depositPayout: enumByName(DepositPayout.values,
             m['depositPayout'] as String?, DepositPayout.atMaturity),
         depositAutoRenew: m['depositAutoRenew'] as bool? ?? false,
+        nominalCents: m['nominalCents'] as int?,
       );
 
   static DateTime? _parseDate(String? s) =>
@@ -179,12 +189,14 @@ class AccountDto implements WebTreeItem {
         'archived': archived,
         'includeInTotal': includeInTotal,
         'parentId': parentId,
+        'bankAccountId': bankAccountId,
         'sortOrder': sortOrder,
         'depositRateBps': depositRateBps,
         'depositStartDate': depositStartDate?.toIso8601String(),
         'depositEndDate': depositEndDate?.toIso8601String(),
         'depositPayout': depositPayout.name,
         'depositAutoRenew': depositAutoRenew,
+        'nominalCents': nominalCents,
       };
 }
 

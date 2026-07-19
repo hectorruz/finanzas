@@ -4,6 +4,8 @@
 /// (nunca `double` para dinero).
 library;
 
+import '../../data/models/enums.dart';
+
 /// Retención de IRPF sobre rendimientos del capital mobiliario aplicada a la
 /// estimación de intereses de un depósito, en puntos básicos (19 % = tramo
 /// estatal hasta 6.000 €; no se modelan los tramos superiores porque esto es
@@ -64,6 +66,51 @@ int estimatedNetInterestCents({
     end: end,
   );
   return (grossRaw * (10000 - depositIrpfRateBps) / 10000).round();
+}
+
+/// Ganancia **bruta** de una Letra del Tesoro: nominal − precio de compra, en
+/// céntimos. Las letras van a descuento (se compran por menos del nominal) y
+/// **no** tienen retención de IRPF en origen, así que la ganancia se muestra en
+/// bruto. Nunca negativa (0 si el nominal no supera al precio de compra o faltan
+/// datos).
+int treasuryBillGainCents({
+  required int nominalCents,
+  required int purchaseCents,
+}) {
+  final gain = nominalCents - purchaseCents;
+  return gain < 0 ? 0 : gain;
+}
+
+/// Crédito proyectado que un depósito o letra aporta al saldo de su banco
+/// asociado, en céntimos ("proyección total al vencimiento", importe fijo):
+/// depósito → interés **neto** (tras 19 % IRPF); letra → ganancia **bruta**;
+/// cualquier otro tipo → 0.
+int projectedBankCreditCents({
+  required AccountType type,
+  required int principalOrPurchaseCents,
+  required int? rateBps,
+  required int? nominalCents,
+  required DateTime? start,
+  required DateTime? end,
+}) {
+  switch (type) {
+    case AccountType.deposit:
+      return estimatedNetInterestCents(
+        principalCents: principalOrPurchaseCents,
+        rateBps: rateBps,
+        start: start,
+        end: end,
+      );
+    case AccountType.treasuryBill:
+      return treasuryBillGainCents(
+        nominalCents: nominalCents ?? 0,
+        purchaseCents: principalOrPurchaseCents,
+      );
+    case AccountType.bank:
+    case AccountType.cash:
+    case AccountType.investment:
+      return 0;
+  }
 }
 
 /// Formatea una TAE en puntos básicos como porcentaje español ("3,75 %").

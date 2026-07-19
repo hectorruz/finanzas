@@ -3,6 +3,7 @@ import 'package:isar_community/isar.dart';
 
 import '../../core/db/isar_provider.dart';
 import '../../core/sync/sync_stamp.dart';
+import '../../features/accounts/deposit_math.dart';
 import '../models/account.dart';
 import '../models/enums.dart';
 import '../models/transaction.dart';
@@ -113,6 +114,30 @@ class AccountRepository {
         .findAll();
     for (final t in incoming) {
       total += t.amountCents;
+    }
+
+    // Interés neto (depósitos) / ganancia bruta (letras) proyectados de todo
+    // depósito o Letra del Tesoro cuyo banco efectivo sea esta cuenta. Es una
+    // estimación fija hasta el vencimiento; la propia cuenta del depósito sigue
+    // aportando solo su capital, así que no hay doble conteo.
+    final linked = await _isar.accounts
+        .filter()
+        .deletedAtIsNull()
+        .group((q) => q
+            .typeEqualTo(AccountType.deposit)
+            .or()
+            .typeEqualTo(AccountType.treasuryBill))
+        .findAll();
+    for (final d in linked) {
+      if (d.holdingBankId != accountId) continue;
+      total += projectedBankCreditCents(
+        type: d.type,
+        principalOrPurchaseCents: d.initialBalanceCents,
+        rateBps: d.depositRateBps,
+        nominalCents: d.nominalCents,
+        start: d.depositStartDate,
+        end: d.depositEndDate,
+      );
     }
     return total;
   }

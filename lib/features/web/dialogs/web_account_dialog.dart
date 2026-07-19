@@ -44,6 +44,10 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
   DepositPayout _depositPayout = DepositPayout.atMaturity;
   bool _depositAutoRenew = false;
 
+  // Banco asociado (depósitos/letras que no sean subcuenta) y nominal (letras).
+  int? _bankAccountId;
+  int _nominalCents = 0;
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +70,8 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
     _depositEndDate = e?.depositEndDate;
     _depositPayout = e?.depositPayout ?? DepositPayout.atMaturity;
     _depositAutoRenew = e?.depositAutoRenew ?? false;
+    _bankAccountId = e?.bankAccountId;
+    _nominalCents = e?.nominalCents ?? 0;
   }
 
   @override
@@ -116,6 +122,8 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
       _error = null;
     });
     final isDeposit = _type == AccountType.deposit;
+    final isBill = _type == AccountType.treasuryBill;
+    final isSub = _parentId != null;
     if (isDeposit) _parseRate(_rate.text);
     final dto = AccountDto(
       name: name,
@@ -125,14 +133,17 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
       includeInTotal: _includeInTotal,
       archived: _archived,
       parentId: _parentId,
+      // El banco solo se guarda si no es subcuenta y es depósito/letra.
+      bankAccountId: (!isSub && (isDeposit || isBill)) ? _bankAccountId : null,
       colorValue: _color,
       iconName: _icon,
       sortOrder: widget.existing?.sortOrder ?? 0,
       depositRateBps: isDeposit ? _depositRateBps : null,
-      depositStartDate: isDeposit ? _depositStartDate : null,
-      depositEndDate: isDeposit ? _depositEndDate : null,
+      depositStartDate: (isDeposit || isBill) ? _depositStartDate : null,
+      depositEndDate: (isDeposit || isBill) ? _depositEndDate : null,
       depositPayout: isDeposit ? _depositPayout : DepositPayout.atMaturity,
       depositAutoRenew: isDeposit && _depositAutoRenew,
+      nominalCents: isBill && _nominalCents != 0 ? _nominalCents : null,
     );
     final client = ref.read(webClientProvider)!;
     try {
@@ -273,6 +284,58 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
     ];
   }
 
+  /// Campos de una Letra del Tesoro: importe nominal + ganancia bruta estimada.
+  List<Widget> _treasuryFields(BuildContext context) {
+    final df = DateFormat('d MMM yyyy', 'es');
+    final gain = treasuryBillGainCents(
+      nominalCents: _nominalCents,
+      purchaseCents: _initialCents,
+    );
+    return [
+      const SizedBox(height: 8),
+      WebAmountField(
+        label: 'Importe nominal (al vencimiento)',
+        initialCents: _nominalCents == 0 ? null : _nominalCents,
+        onChangedCents: (c) => setState(() => _nominalCents = c ?? 0),
+      ),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.event_available),
+        title: const Text('Fecha de compra'),
+        subtitle: Text(_depositStartDate == null
+            ? 'Sin definir'
+            : df.format(_depositStartDate!)),
+        trailing: const Icon(Icons.edit_calendar_outlined),
+        onTap: () => _pickDate(isStart: true),
+      ),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.event_busy),
+        title: const Text('Fecha de vencimiento'),
+        subtitle: Text(_depositEndDate == null
+            ? 'Sin definir'
+            : df.format(_depositEndDate!)),
+        trailing: const Icon(Icons.edit_calendar_outlined),
+        onTap: () => _pickDate(isStart: false),
+      ),
+      if (gain > 0)
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            leading: const Icon(Icons.trending_up),
+            title: const Text('Ganancia estimada'),
+            subtitle: const Text(
+                'Nominal − precio de compra. Sin retención en origen (bruto)'),
+            trailing: Text(
+              Money(gain).format(),
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+          ),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final accounts = ref.watch(webAccountsProvider).valueOrNull ?? const [];
@@ -282,6 +345,16 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
             widget.existing!.id,
             ...webDescendantIds(widget.existing!.id, accounts),
           };
+    final isDepositOrBill =
+        _type == AccountType.deposit || _type == AccountType.treasuryBill;
+    // Un depósito/letra no puede ser el banco de otro: se excluyen del selector.
+    final bankExclude = {
+      ...exclude,
+      for (final a in accounts)
+        if (a.type == AccountType.deposit ||
+            a.type == AccountType.treasuryBill)
+          a.id,
+    };
 
     return Dialog(
       child: ConstrainedBox(
@@ -317,6 +390,8 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
                       value: AccountType.investment, label: Text('Inversión')),
                   ButtonSegment(
                       value: AccountType.deposit, label: Text('Depósito')),
+                  ButtonSegment(
+                      value: AccountType.treasuryBill, label: Text('Letra')),
                 ],
                 selected: {_type},
                 onSelectionChanged: (s) => setState(() => _type = s.first),
@@ -330,15 +405,30 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
                 excludeIds: exclude,
                 onChanged: (v) => setState(() => _parentId = v),
               ),
+              if (isDepositOrBill && _parentId == null) ...[
+                const SizedBox(height: 14),
+                WebAccountPicker(
+                  label: 'Banco donde está suscrito',
+                  value: _bankAccountId,
+                  includeNone: true,
+                  noneLabel: 'Ninguno',
+                  excludeIds: bankExclude,
+                  onChanged: (v) => setState(() => _bankAccountId = v),
+                ),
+              ],
               const SizedBox(height: 14),
               WebAmountField(
-                label: _type == AccountType.deposit
-                    ? 'Capital del depósito'
-                    : 'Saldo inicial',
+                label: switch (_type) {
+                  AccountType.deposit => 'Capital del depósito',
+                  AccountType.treasuryBill => 'Precio de compra',
+                  _ => 'Saldo inicial',
+                },
                 initialCents: _initialCents == 0 ? null : _initialCents,
                 onChangedCents: (c) => setState(() => _initialCents = c ?? 0),
               ),
               if (_type == AccountType.deposit) ..._depositFields(context),
+              if (_type == AccountType.treasuryBill)
+                ..._treasuryFields(context),
               const SizedBox(height: 6),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

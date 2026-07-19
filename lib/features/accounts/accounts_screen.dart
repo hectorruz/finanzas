@@ -92,13 +92,15 @@ class AccountsScreen extends ConsumerWidget {
         'cash' => 'Efectivo',
         'investment' => 'Inversiones',
         'deposit' => 'Depósito',
+        'treasuryBill' => 'Letra del Tesoro',
         _ => type,
       };
 
-  /// Subtítulo: tipo (+ nota) y, para depósitos, el estado de vencimiento.
+  /// Subtítulo: tipo (+ nota) y, para depósitos y letras, el estado de vencimiento.
   String _subtitleFor(Account a) {
     final parts = <String>[_typeLabel(a.type.name)];
-    if (a.type == AccountType.deposit) {
+    if (a.type == AccountType.deposit ||
+        a.type == AccountType.treasuryBill) {
       final days = daysUntilMaturity(a.depositEndDate);
       if (days != null) {
         parts.add(days < 0

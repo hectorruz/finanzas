@@ -178,12 +178,14 @@ class BackupService {
         'includeInTotal': a.includeInTotal,
         'note': a.note,
         'parentId': a.parentId,
+        'bankAccountId': a.bankAccountId,
         'sortOrder': a.sortOrder,
         'depositRateBps': a.depositRateBps,
         'depositStartDate': a.depositStartDate?.toIso8601String(),
         'depositEndDate': a.depositEndDate?.toIso8601String(),
         'depositPayout': a.depositPayout.name,
         'depositAutoRenew': a.depositAutoRenew,
+        'nominalCents': a.nominalCents,
       };
 
   Account _accountFromMap(Map<String, dynamic> m) => _withSync(
@@ -200,13 +202,15 @@ class BackupService {
         ..includeInTotal = m['includeInTotal'] as bool? ?? true
         ..note = m['note'] as String? ?? ''
         ..parentId = m['parentId'] as int?
+        ..bankAccountId = m['bankAccountId'] as int?
         ..sortOrder = m['sortOrder'] as int? ?? 0
         ..depositRateBps = m['depositRateBps'] as int?
         ..depositStartDate = _parseDate(m['depositStartDate'] as String?)
         ..depositEndDate = _parseDate(m['depositEndDate'] as String?)
         ..depositPayout = enumByName(DepositPayout.values,
             m['depositPayout'] as String?, DepositPayout.atMaturity)
-        ..depositAutoRenew = m['depositAutoRenew'] as bool? ?? false,
+        ..depositAutoRenew = m['depositAutoRenew'] as bool? ?? false
+        ..nominalCents = m['nominalCents'] as int?,
       m);
 
   Map<String, dynamic> _categoryToMap(Category c) => {

@@ -5,7 +5,7 @@
 /// añaden valores en el futuro. El parseo seguro desde texto se hace con
 /// [enumByName], que aplica un fallback en lugar de lanzar excepción.
 
-enum AccountType { bank, cash, investment, deposit }
+enum AccountType { bank, cash, investment, deposit, treasuryBill }
 
 /// Cómo se liquidan (pagan) los intereses de una cuenta tipo depósito.
 enum DepositPayout { atMaturity, monthly, quarterly, yearly }

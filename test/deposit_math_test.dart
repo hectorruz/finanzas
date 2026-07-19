@@ -1,3 +1,4 @@
+import 'package:finanzas/data/models/enums.dart';
 import 'package:finanzas/features/accounts/deposit_math.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -91,6 +92,83 @@ void main() {
       expect(formatRateBps(350), '3,5 %');
       expect(formatRateBps(300), '3 %');
       expect(formatRateBps(null), '—');
+    });
+  });
+
+  group('treasuryBillGainCents', () {
+    test('ganancia bruta = nominal − precio de compra', () {
+      // Letra de 1.000 € comprada a 970 € → 30 € de ganancia.
+      expect(
+        treasuryBillGainCents(nominalCents: 100000, purchaseCents: 97000),
+        3000,
+      );
+    });
+
+    test('nunca negativa (compra >= nominal → 0)', () {
+      expect(
+        treasuryBillGainCents(nominalCents: 100000, purchaseCents: 100000),
+        0,
+      );
+      expect(
+        treasuryBillGainCents(nominalCents: 97000, purchaseCents: 100000),
+        0,
+      );
+    });
+  });
+
+  group('projectedBankCreditCents', () {
+    test('depósito → interés neto (19 % IRPF)', () {
+      final net = estimatedNetInterestCents(
+        principalCents: 1000000,
+        rateBps: 375,
+        start: DateTime(2026, 1, 1),
+        end: DateTime(2027, 1, 1),
+      );
+      expect(
+        projectedBankCreditCents(
+          type: AccountType.deposit,
+          principalOrPurchaseCents: 1000000,
+          rateBps: 375,
+          nominalCents: null,
+          start: DateTime(2026, 1, 1),
+          end: DateTime(2027, 1, 1),
+        ),
+        net,
+      );
+    });
+
+    test('letra → ganancia bruta (nominal − compra)', () {
+      expect(
+        projectedBankCreditCents(
+          type: AccountType.treasuryBill,
+          principalOrPurchaseCents: 97000,
+          rateBps: null,
+          nominalCents: 100000,
+          start: DateTime(2026, 1, 1),
+          end: DateTime(2026, 12, 1),
+        ),
+        3000,
+      );
+    });
+
+    test('otros tipos → 0', () {
+      for (final t in [
+        AccountType.bank,
+        AccountType.cash,
+        AccountType.investment,
+      ]) {
+        expect(
+          projectedBankCreditCents(
+            type: t,
+            principalOrPurchaseCents: 1000000,
+            rateBps: 375,
+            nominalCents: 100000,
+            start: DateTime(2026, 1, 1),
+            end: DateTime(2027, 1, 1),
+          ),
+          0,
+        );
+      }
     });
   });
 
