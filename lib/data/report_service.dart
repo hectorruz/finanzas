@@ -130,6 +130,65 @@ class ReportData {
   final ExtremeMovement? maxIncome;
 }
 
+/// Claves de tarjeta de portada de tipo gráfico. Excel no dibuja gráficos, así
+/// que a efectos de "¿esta tarjeta muestra algo?" cuentan como vacías al
+/// resolver la portada del `.xlsx` (ver [resolveCoverCards]).
+const kReportCoverChartKeys = {'chartCategoryPie', 'chartEvolutionBar'};
+
+/// ¿La tarjeta de portada [key] tiene contenido con el flujo y los datos de
+/// [data]? Es la **fuente única** de los "guards" de la portada: tanto el PDF
+/// (`_kpiTileFor`/`_blockFor`) como el Excel (`_resumenCard`) omiten en
+/// silencio la tarjeta cuando esto es `false` (p. ej. "Neto" con flujo de solo
+/// gastos, o "Categoría top" en un periodo sin gastos). [excludeCharts] trata
+/// además las tarjetas de gráfico como vacías (para el Excel, que no las pinta).
+bool coverCardHasContent(String key, ReportData data,
+    {bool excludeCharts = false}) {
+  final o = data.options;
+  if (excludeCharts && kReportCoverChartKeys.contains(key)) return false;
+  switch (key) {
+    case 'kpiIncome':
+      return o.flow.showsIncome;
+    case 'kpiExpense':
+      return o.flow.showsExpense;
+    case 'kpiNet':
+    case 'kpiSavingsRate':
+      return o.flow == ReportFlow.both;
+    case 'kpiBiggestExpense':
+      return data.maxExpense != null;
+    case 'kpiTopCategory':
+    case 'blockTopCategories':
+      return data.categoryExpenses.isNotEmpty;
+    case 'kpiTopAccount':
+      return data.accountUsage.isNotEmpty;
+    case 'chartCategoryPie':
+      return o.pieChart && data.categoryExpenses.isNotEmpty;
+    case 'chartEvolutionBar':
+      return o.barChart && data.evolution.isNotEmpty;
+    case 'blockComparison':
+      return data.comparison != null;
+    case 'blockAverages':
+      return data.averages != null;
+    default:
+      return false;
+  }
+}
+
+/// Claves de portada que **de verdad** mostrarán algo, en orden. Si la selección
+/// del usuario no aplica al flujo/datos actuales (p. ej. solo KPIs de ingresos
+/// con flujo "Gastos", o tarjetas de análisis en un periodo sin movimientos),
+/// recae en las tarjetas por defecto —que siempre muestran al menos un KPI para
+/// cualquier flujo— para que la portada no quede con solo el encabezado.
+///
+/// [ReportOptions.effectiveCoverCards] solo rescata el caso de lista vacía;
+/// esto cubre además el de una lista no vacía pero **toda inaplicable**.
+List<String> resolveCoverCards(ReportData data, {bool excludeCharts = false}) {
+  bool has(String k) =>
+      coverCardHasContent(k, data, excludeCharts: excludeCharts);
+  final selected = data.options.effectiveCoverCards.where(has).toList();
+  if (selected.isNotEmpty) return selected;
+  return kDefaultReportCoverCards.where(has).toList();
+}
+
 /// Calcula los datos de un informe a partir de la base de datos.
 class ReportService {
   ReportService(this._isar);

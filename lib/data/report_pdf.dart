@@ -66,7 +66,10 @@ Future<File> buildReportPdf(ReportData data) async {
 
   // --- Página dashboard (portada personalizable) ---
   if (o.dashboardPage) {
-    final cards = o.effectiveCoverCards;
+    // resolveCoverCards (no effectiveCoverCards) para que la portada no salga
+    // con solo el encabezado cuando las tarjetas elegidas no aplican al flujo o
+    // no hay datos: en ese caso recae en las de por defecto.
+    final cards = resolveCoverCards(data);
     final kpiTiles = [
       for (final key in cards)
         if (_kpiCoverKeys.contains(key))

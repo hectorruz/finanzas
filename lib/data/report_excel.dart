@@ -234,7 +234,11 @@ Future<File> buildReportExcel(ReportData data) async {
     w.title('Informe Finanzas');
     w.blank();
     w.title('Resumen del periodo');
-    for (final key in o.effectiveCoverCards) {
+    // resolveCoverCards (no effectiveCoverCards): recae en las tarjetas por
+    // defecto si las elegidas no aplican, para que la hoja no quede solo con los
+    // títulos. excludeCharts: Excel no pinta gráficos, así que una selección de
+    // solo gráficos también debe recaer en las de por defecto.
+    for (final key in resolveCoverCards(data, excludeCharts: true)) {
       _resumenCard(w, s, key, data);
     }
     s.getRangeByIndex(1, 1, 1, 3).columnWidth = 26;
