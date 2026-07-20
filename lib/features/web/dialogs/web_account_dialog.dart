@@ -82,6 +82,12 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
     super.dispose();
   }
 
+  /// Nombre de la cuenta padre (si es subcuenta y se encuentra), para etiquetar
+  /// la opción "sin elegir" del selector de banco.
+  String? _parentName(List<AccountDto> accounts) => _parentId == null
+      ? null
+      : accounts.where((a) => a.id == _parentId).firstOrNull?.name;
+
   void _parseRate(String raw) {
     final t = raw.trim().replaceAll(',', '.');
     if (t.isEmpty) {
@@ -123,7 +129,6 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
     });
     final isDeposit = _type == AccountType.deposit;
     final isBill = _type == AccountType.treasuryBill;
-    final isSub = _parentId != null;
     if (isDeposit) _parseRate(_rate.text);
     final dto = AccountDto(
       name: name,
@@ -133,8 +138,9 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
       includeInTotal: _includeInTotal,
       archived: _archived,
       parentId: _parentId,
-      // El banco solo se guarda si no es subcuenta y es depósito/letra.
-      bankAccountId: (!isSub && (isDeposit || isBill)) ? _bankAccountId : null,
+      // El banco elegido a mano se guarda para depósitos/letras (también si es
+      // subcuenta: no tiene por qué ser el padre).
+      bankAccountId: (isDeposit || isBill) ? _bankAccountId : null,
       colorValue: _color,
       iconName: _icon,
       sortOrder: widget.existing?.sortOrder ?? 0,
@@ -405,13 +411,19 @@ class _WebAccountDialogState extends ConsumerState<WebAccountDialog> {
                 excludeIds: exclude,
                 onChanged: (v) => setState(() => _parentId = v),
               ),
-              if (isDepositOrBill && _parentId == null) ...[
+              if (isDepositOrBill) ...[
                 const SizedBox(height: 14),
                 WebAccountPicker(
+                  // Se puede elegir cualquier cuenta, también si es subcuenta (no
+                  // tiene por qué ir a la principal). "Ninguno" en una subcuenta
+                  // recae en su cuenta padre.
                   label: 'Banco donde está suscrito',
                   value: _bankAccountId,
                   includeNone: true,
-                  noneLabel: 'Ninguno',
+                  noneLabel: _parentId == null
+                      ? 'Ninguno'
+                      : 'Su cuenta padre'
+                          '${_parentName(accounts) == null ? '' : ' (${_parentName(accounts)})'}',
                   excludeIds: bankExclude,
                   onChanged: (v) => setState(() => _bankAccountId = v),
                 ),

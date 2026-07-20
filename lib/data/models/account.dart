@@ -55,10 +55,11 @@ class Account implements Syncable {
   /// Orden de aparición en listados.
   int sortOrder = 0;
 
-  /// Banco/cuenta donde está suscrito el depósito o la Letra del Tesoro, cuando
-  /// **no** es subcuenta (si lo es, el banco es su [parentId]). El interés neto
-  /// (depósito) o la ganancia (letra) se suman al saldo de esa cuenta. `null` =
-  /// sin asociar. Solo relevante para depósitos y letras.
+  /// Banco/cuenta donde está suscrito el depósito o la Letra del Tesoro. Se
+  /// puede elegir cualquier cuenta a mano, también cuando es subcuenta (no tiene
+  /// por qué ser su [parentId]). El interés neto (depósito) o la ganancia (letra)
+  /// se suman al saldo de esa cuenta. `null` = sin elegir: si es subcuenta recae
+  /// en su [parentId], si no, sin asociar. Solo relevante para depósitos y letras.
   int? bankAccountId;
 
   // --- Depósito a plazo (solo relevante si [type] == AccountType.deposit) ---
@@ -95,8 +96,8 @@ class Account implements Syncable {
   @ignore
   bool get isSubaccount => parentId != null;
 
-  /// Banco efectivo donde está el depósito/letra: si es subcuenta, su padre; si
-  /// no, el [bankAccountId] elegido a mano. `null` si no hay ninguno.
+  /// Banco efectivo donde está el depósito/letra: el [bankAccountId] elegido a
+  /// mano si lo hay; si no y es subcuenta, su padre. `null` si no hay ninguno.
   @ignore
-  int? get holdingBankId => isSubaccount ? parentId : bankAccountId;
+  int? get holdingBankId => bankAccountId ?? (isSubaccount ? parentId : null);
 }

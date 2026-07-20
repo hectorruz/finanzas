@@ -144,13 +144,12 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
       ..includeInTotal = _includeInTotal
       ..note = _noteController.text.trim()
       ..parentId = _existing?.parentId ?? widget.parentId
-      // El banco solo se guarda si no es subcuenta (si lo es, el banco es el
-      // padre) y solo para depósitos/letras.
-      ..bankAccountId = (_isSubaccount ||
-              (_type != AccountType.deposit &&
-                  _type != AccountType.treasuryBill))
-          ? null
-          : _bankAccountId;
+      // El banco elegido a mano se guarda para depósitos/letras (también si es
+      // subcuenta: no tiene por qué ser el padre). En el resto de tipos se limpia.
+      ..bankAccountId = (_type == AccountType.deposit ||
+              _type == AccountType.treasuryBill)
+          ? _bankAccountId
+          : null;
     if (_type == AccountType.deposit) {
       _parseRate(_rateController.text);
       acc
@@ -365,26 +364,22 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
     ];
   }
 
-  /// Asociación de banco para depósitos/letras: si es subcuenta, un tile de solo
-  /// lectura con el padre; si no, un selector entre las cuentas banco/efectivo/
-  /// inversión.
+  /// Selector del banco donde está suscrito el depósito/letra. Se puede elegir
+  /// cualquier cuenta banco/efectivo/inversión, también cuando es subcuenta (no
+  /// tiene por qué ir a la principal). Si es subcuenta, la opción "sin elegir"
+  /// recae en su cuenta padre (comportamiento por defecto).
   Widget _bankAssociation(List<Account> accounts) {
-    if (_isSubaccount) {
-      final parentId = _existing?.parentId ?? widget.parentId;
-      final parent = accounts.where((a) => a.id == parentId).firstOrNull;
-      return ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.account_balance_outlined),
-        title: const Text('Suscrito en'),
-        subtitle: Text(parent?.name ?? 'su cuenta padre'),
-      );
-    }
+    final parentId = _existing?.parentId ?? widget.parentId;
+    final parent = accounts.where((a) => a.id == parentId).firstOrNull;
     final candidates = accounts
         .where((a) =>
             a.id != _existing?.id &&
             a.type != AccountType.deposit &&
             a.type != AccountType.treasuryBill)
         .toList();
+    final noneLabel = _isSubaccount
+        ? 'Su cuenta padre${parent == null ? '' : ' (${parent.name})'}'
+        : 'Ninguno';
     return DropdownButtonFormField<int?>(
       value: candidates.any((a) => a.id == _bankAccountId)
           ? _bankAccountId
@@ -394,7 +389,7 @@ class _AccountEditorScreenState extends ConsumerState<AccountEditorScreen> {
         prefixIcon: Icon(Icons.account_balance_outlined),
       ),
       items: [
-        const DropdownMenuItem(value: null, child: Text('Ninguno')),
+        DropdownMenuItem(value: null, child: Text(noneLabel)),
         for (final a in candidates)
           DropdownMenuItem(value: a.id, child: Text(a.name)),
       ],
