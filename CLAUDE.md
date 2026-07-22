@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**Mapa de la documentación:** `README.md` = qué es la app y cómo compilarla (para
+personas); **este fichero** = decisiones de diseño y trampas de cada feature (la
+referencia de fondo); `AGENTS.md` = arranque rápido, reglas de trabajo y pendientes
+para cualquier agente de IA (Codex, Claude Code…) que retome el proyecto. Si cambias
+el comportamiento de una feature, actualiza aquí su sección **en el mismo commit**.
+
 ## Project overview
 
 Flutter personal finance app targeting Android. Uses Isar (community fork) as local DB, Riverpod for state/DI, and go_router for navigation.
@@ -134,27 +140,41 @@ the new APK, then re-import.
 ```
 lib/
   main.dart          # init Isar → SeedService → RecurringRepository.materializeDue → ProviderScope → runApp
+                     # + quickAddMain (popup) and paymentIngestMain (headless), both @pragma('vm:entry-point')
+  main_web.dart      # entrypoint of the desktop webapp (no Isar; talks HTTP to the phone)
   app.dart           # MaterialApp.router + DynamicColorBuilder + AMOLED dark theme
+                     # + lifecycle hooks: linked auto-sync, backup runIfDue, payment drain
   core/
-    db/              # IsarService (open + schemas), isarProvider
+    db/              # IsarService (open + schemas), migration_service.dart, isarProvider
     money/           # Money value object (see below)
+    sync/            # Syncable contract (uuid/updatedAt/deletedAt) + stampForSave
+    planning/        # goal_planning.dart — pure goal math shared with the webapp
+    notifications/   # single flutter_local_notifications init shared by all features
+    platform/        # MethodChannel bridges: payments, quick tile, secure screen
     router/          # go_router config + Routes constants
     theme/           # ColorScheme light/dark + AMOLED override
     icons/           # app icon constants
   data/
-    models/          # 8 Isar @collection classes + enums.dart
+    models/          # 9 Isar @collection classes + enums.dart
     repositories/    # one repo per model + Riverpod providers; lookups.dart for id→entity maps
-    backup_service/  # JSON import/export
-    seed_service/    # default data on first launch
+    report_service.dart / report_config.dart / report_pdf.dart / report_excel.dart / report_cover_cards.dart
+    backup_service.dart  # JSON import/export + wipeSyncableData
+    seed_service.dart    # default data on first launch
   features/
     home_shell.dart  # data-driven bottom-nav (sections chosen/ordered in settings; labelBehavior from settings)
     dashboard/       # configurable card grid; AppBar eye toggles the privacy mode
     movements/       # transaction list, filters, batch edit, recurring rules; FAB + small scan-ticket FAB
     receipts/        # OCR scan via ML Kit (on-device)
-    accounts/        # account CRUD with unlimited-depth subaccounts (Account.parentId)
+    accounts/        # account CRUD with unlimited-depth subaccounts (Account.parentId) + deposit_math.dart
     categories/      # category CRUD with unlimited-depth subcategories (Category.parentId)
-    settings/        # app settings, goals (planning), dashboard config, nav config
-    security/        # app lock gate + device-credential auth (local_auth)
+    reports/         # report screen → PDF/Excel export
+    payments/        # payment-notification reader (parser, ingest, rules)
+    notifications/   # recurring-charge reminders (planner + service)
+    backup/          # cloud backup: planner, retention, scheduler, Nextcloud/Drive providers
+    sync/            # LAN sync: engine, codec, transport (net/), review UI
+    web/             # desktop webapp (own Flutter web app, no Isar)
+    settings/        # app settings, goals (planning), dashboard config, nav config, server/payments/backup screens
+    security/        # app lock gate + device-credential auth (local_auth) + secure screen
     quick_add/       # translucent popup for the Quick Settings tile (own entrypoint)
   shared/widgets/    # AmountField, AsyncValueView, IconColorPicker, MoneyText
   assets/fonts/      # Noto Sans (bundled so report PDFs render the € glyph)
@@ -296,6 +316,25 @@ La API de datos vive en el servidor del móvil bajo `/api/*` (`data_api.dart`,
 protegida por token) y reutiliza los repositorios de la app, así que las altas y
 borrados desde la web pasan por el **mismo camino de escritura** (sellado de sync,
 soft-delete) que la UI del móvil.
+
+Superficie actual de la API (toda con `Authorization: Bearer <token>`; los DTOs
+se serializan en `api_serializer.dart` y se consumen con `WebApiClient`):
+
+| Recurso | Endpoints |
+| --- | --- |
+| Cuentas | `GET/POST /api/accounts`, `PUT/DELETE /api/accounts/{id}` |
+| Categorías | `GET/POST /api/categories`, `PUT/DELETE /api/categories/{id}` |
+| Movimientos | `GET/POST /api/transactions`, `PUT/DELETE /api/transactions/{id}`, `POST /api/transactions/batch` (`setCategory` / `setAccount` / `delete`) |
+| Recurrentes | `GET/POST /api/recurring`, `PUT/DELETE /api/recurring/{id}` |
+| Objetivos | `GET/POST /api/goals`, `PUT/DELETE /api/goals/{id}` |
+| Tickets | `GET/POST /api/receipts`, `DELETE /api/receipts/{id}`, `GET /api/receipts/{id}/image` |
+| OCR | `POST /api/ocr` (la imagen la reconoce **el móvil**: ML Kit no existe en web) |
+| Informes | `POST /api/report/pdf`, `POST /api/report/excel` (se generan en el móvil y el navegador descarga el binario) |
+| Ajustes | `GET/PUT /api/settings` |
+
+Al añadir un endpoint: DTO en `web_models.dart` + serialización en
+`api_serializer.dart` + método en `WebApiClient` + caso en `data_api.dart`, y un
+test en `web_api_test.dart` (levanta el servidor real contra una Isar temporal).
 
 **Se sirve desde el propio móvil, no hace falta un PC aparte para usarla:**
 `LanSyncServer` sirve el build estático (`_serveStatic`/`webRoot`) en cualquier ruta
@@ -573,6 +612,90 @@ en un tipo de build). Solo `drive.file`. No hace falta `google-services.json` ni
 client secret. Las APK de CI van con clave de debug de CI → otro SHA-1 → Drive no
 funciona ahí (Nextcloud sí).
 
+### Cuentas: depósitos a plazo y Letras del Tesoro
+
+`AccountType` es `{bank, cash, investment, deposit, treasuryBill}`. Los dos
+últimos son productos con **rendimiento estimado**, no movimientos reales: la
+app no crea transacciones por los intereses, los **calcula** y los suma al saldo
+del banco donde está el producto.
+
+- **Depósito** (`deposit`): `depositRateBps` (TAE en **puntos básicos**, 3,75 % =
+  375 — entero, nunca `double`), `depositStartDate`/`depositEndDate`,
+  `depositPayout` (`atMaturity|monthly|quarterly|yearly`) y `depositAutoRenew`.
+- **Letra del Tesoro** (`treasuryBill`): va **a descuento**, así que reutiliza
+  `initialBalanceCents` como precio de compra, `depositStartDate` como fecha de
+  compra y `depositEndDate` como vencimiento; `nominalCents` es lo que se cobra
+  al final. Ganancia bruta = `nominalCents - initialBalanceCents`.
+- **Matemática pura** (`features/accounts/deposit_math.dart`, testeada en
+  `deposit_math_test.dart`): interés **simple** `capital · bps/10000 · días/365`.
+  El redondeo al céntimo se hace **una sola vez, al final**: el neto se calcula
+  sobre el bruto *sin redondear* (`depositIrpfRateBps = 1900`, el 19 % de
+  retención del primer tramo) para no encadenar dos redondeos. Es una
+  **estimación orientativa**, no una liquidación fiscal.
+- **Banco asociado** (`bankAccountId` → `holdingBankId`): se elige libremente,
+  también en subcuentas (no tiene por qué ser el `parentId`); si no se elige y es
+  subcuenta, recae en el padre. `AccountRepository.balanceCents` recorre los
+  depósitos/letras cuyo `holdingBankId` sea esa cuenta y les suma el rendimiento
+  estimado.
+
+### Objetivos (planificación de ahorro)
+
+`Goal` + `core/planning/goal_planning.dart` (**puro**, sin Isar, para que el
+`GoalDto` de la webapp comparta exactamente la misma matemática; testeado en
+`goal_planning_test.dart`). Dos modos en `planMode`:
+`'contribution'` (aporto `monthlyContributionCents` al mes → `monthsToTarget` /
+`projectedDate`) y `'deadline'` (fijo `deadline` → `requiredMonthlyCents`). Los
+getters del modelo son `@ignore` y delegan en las funciones puras. Los objetivos
+son un módulo opcional del dashboard/nav (`AppModule.goals`).
+
+### Informes (PDF y Excel)
+
+`report_service.dart` calcula `ReportData` (evolución por semana/mes/año,
+rankings por categoría/cuenta/concepto, uso de cuentas, medias, récords y
+comparativa con el periodo anterior equivalente) y `report_pdf.dart` /
+`report_excel.dart` lo renderizan. La pantalla es `features/reports/`; la webapp
+llama a `POST /api/report/pdf|excel`, o sea que **el informe se genera siempre en
+el móvil** y el navegador solo descarga el fichero.
+
+- **`report_config.dart` está separado de `report_service.dart` a propósito**:
+  `ReportConfig` (flujo, orden, granularidad, tarjetas de portada) es Dart puro y
+  lo importa la webapp; `report_service.dart` importa Isar. Los `*.g.dart` de Isar
+  llevan ids `int64` como literales que **`dart2js` no puede representar**, así
+  que cualquier import transitivo de Isar rompe `flutter build web`. Si añades
+  opciones al informe, van en `report_config.dart`.
+- **Portada personalizable**: `kReportCoverCatalog` (`report_cover_cards.dart`)
+  es el catálogo de tarjetas (kpi / chart / block) y `kDefaultReportCoverCards`
+  (en `report_config.dart`, sin dependencia de Material) el valor por defecto —
+  un único origen de verdad para editor y decodificador. **Excel ignora las
+  `chart`** (XlsIO no dibuja gráficos aquí). La configuración se persiste
+  serializada en `AppSettings.reportConfig`.
+- El PDF empaqueta **Noto Sans** (`assets/fonts/`) porque las fuentes por defecto
+  de `package:pdf` no traen el glifo `€`.
+- Cuidado con la portada vacía: si las tarjetas elegidas no aplican al flujo o no
+  hay datos, hay que degradar con gracia (fue el bug de `f398cb5`).
+
+### Bloqueo y privacidad de pantalla
+
+`features/security/`: `AppLockGate` envuelve la app y exige autenticación
+(`local_auth`, `biometricOnly: false` → vale la huella **o** el PIN/patrón del
+teléfono; la app no guarda ninguna credencial) cuando `AppSettings.appLockEnabled`.
+`privacy_screen_gate.dart` + `core/platform/secure_screen.dart` aplican
+`FLAG_SECURE` para ocultar el contenido en el conmutador de tareas
+(`secureScreenEnabled` es `bool?` **a propósito**: `null` = nunca configurado, se
+distingue de un `false` explícito). El popup de alta rápida **no** pasa por el
+gate (es un entrypoint aparte).
+
+### Dashboard y navegación configurables
+
+Ambas cosas son listas de nombres de enum en `AppSettings`, resueltas con
+`enumByName` y con getters que filtran lo desconocido:
+`dashboardCards`/`webDashboardCards` (`DashboardCardType`) y `navSections`
+(`NavSection`), más `totalBalanceAccountIds`, `accountsCardIds` y
+`balanceSubtotals` para acotar qué cuentas entran en cada tarjeta. `home_shell.dart`
+construye la barra inferior desde esos datos (`alwaysShowNavLabels` decide el
+`labelBehavior`). Al añadir un valor nuevo al enum, **añádelo también al orden por
+defecto** y comprueba que un ajuste guardado con el valor viejo sigue decodificando.
+
 ### Privacy mode (hide amounts)
 
 `AppSettings.hideAmounts` (toggled by the eye in the dashboard AppBar) masks every monetary value app-wide. Render amounts with `MoneyText` (`lib/shared/widgets/money_text.dart`), which watches `hideAmountsProvider` and shows `kHiddenAmount` when active — prefer it over `Text(Money(x).format())` for on-screen figures.
@@ -580,6 +703,43 @@ funciona ahí (Nextcloud sí).
 ### State / data flow
 
 Isar is opened once in `main()` and injected via `isarProvider.overrideWithValue(isar)`. Every repository receives `Isar` through its Riverpod provider watching `isarProvider`. Screens watch `FutureProvider`s (or `StreamProvider` wrappers around `watchLazy`) for reactive updates.
+
+### Data migrations (Isar) — el centinela `Int.MIN`
+
+`IsarService.open()` llama a `runMigrations(isar)` (`core/db/migration_service.dart`)
+justo tras abrir la BD y antes de que ningún repositorio lea. El guard es
+`AppSettings.dataVersion` **dentro del `writeTxn`**, así que es idempotente y
+seguro con el acceso multi-isolate del quick-add.
+
+⚠️ **Al añadir un campo `int` (o `bool`/`DateTime`) no-nullable a una colección
+que ya tiene filas, Isar rellena esas filas con su centinela
+`-9223372036854775808` (Int.MIN), NO con el valor por defecto del constructor
+Dart.** Ya pasó: la UI llegó a mostrar "conservar las últimas
+-9223372036854775808 copias" (v2 de las migraciones, `_sanitizeBackupFields`).
+Cada vez que añadas un campo así:
+1. sube `kCurrentDataVersion` y escribe el saneo (solo tocando lo que esté fuera
+   de rango, para no pisar lo que el usuario sí configuró), y
+2. si el campo tiene que distinguir "sin configurar" de un valor real, hazlo
+   **nullable** (como `secureScreenEnabled`).
+
+Historial: **v1** backfill de `uuid`/`updatedAt` en las colecciones sincronizables;
+**v2** saneo de los `int` de las copias en la nube.
+
+### Tests
+
+~40 ficheros en `test/`, casi todos sobre **lógica pura** (money, planificadores,
+parsers, retención, regex, codec de sync) más unos cuantos de integración con Isar
+real y con un `HttpServer` local (`lan_sync_test.dart`, `web_api_test.dart`,
+`nextcloud_provider_test.dart`, `google_drive_provider_test.dart`). Los que
+necesitan la BD usan `test/support/test_isar.dart`, que descarga el binario nativo
+(`Isar.initializeIsarCore(download: true)`, hace falta red la primera vez) y abre
+una instancia temporal con nombre único — ciérrala siempre con
+`isar.close(deleteFromDisk: true)`.
+
+Regla práctica: cuando una feature tenga decisiones no triviales (fechas, dinero,
+parseo, orden), **extrae la lógica a una función pura** en su propio fichero y
+testéala ahí; es el patrón que sigue todo el repo (`backup_planner.dart`,
+`notification_planner.dart`, `deposit_math.dart`, `sync_qr.dart`, `regex_help.dart`…).
 
 ### Money handling
 
@@ -597,9 +757,27 @@ Routes are defined as constants in `Routes` (`lib/core/router/app_router.dart`).
 
 ## CI
 
-`.github/workflows/build-apk.yml` runs on `workflow_dispatch` or pushes to `v*` tags. It regenerates `android/` and `*.g.dart` from scratch, then builds a release APK. Signed with the Flutter debug key by default — use a keystore for distribution.
+`.github/workflows/build-apk.yml` runs on `workflow_dispatch` or pushes to `v*` tags:
+it regenerates `*.g.dart` with `build_runner` and builds a release APK, uploaded as an
+artifact (and attached to a GitHub Release on `v*` tags).
 
 To publish a release:
 ```bash
 git tag v0.x.y && git push origin v0.x.y
 ```
+
+**Tres cosas que hacen que la APK de CI NO sea distribuible** (a propósito, pero
+conviene tenerlas presentes):
+1. Va firmada con la **clave de depuración** del runner (no hay keystore en
+   secrets) → no puede actualizar una instalación firmada con `finanzas.keystore`,
+   y su SHA-1 no es el registrado en el cliente OAuth → **Google Drive no funciona**
+   ahí (Nextcloud sí).
+2. **No** ejecuta `dart run tool/pack_webapp.dart`, así que lleva el
+   `assets/webapp.zip` placeholder: el móvil serviría la página de "aún no
+   compilada" en vez de la webapp.
+3. ⚠️ **Deuda técnica:** el workflow sigue ejecutando
+   `flutter create . --org com.hectorruz --platforms=android` y parcheando el
+   manifest con `sed`, herencia de cuando `android/` no estaba versionado. Hoy
+   `android/` **sí lo está**, así que ese paso pisa el manifest y el Gradle
+   commiteados y cambia el `applicationId` a `com.hectorruz.finanzas`. Habría que
+   borrar esos dos pasos (checkout → pub get → build_runner → build). Ver AGENTS.md.
