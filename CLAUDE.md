@@ -357,6 +357,14 @@ que arranca el servidor, y ese directorio es el `webRoot` que se le pasa a
 `LanSyncServer` — nunca lanza: si el asset falta o está roto, el servidor sigue
 sirviendo solo la API con normalidad.
 
+⚠️ **Recursión del zip:** como `assets/webapp.zip` está declarado en
+`pubspec.yaml`, el build web lo incluye a su vez como asset
+(`build/web/assets/assets/webapp.zip`) — sin remedio, cada ciclo build+pack
+anidaría el zip del ciclo anterior y el fichero crecería sin límite (llegó a
+190 MB). `tool/pack_webapp.dart` borra esa copia anidada del build antes de
+comprimir (la webapp nunca la lee; solo la sirve el móvil), así que el tamaño
+queda estable. No quites ese paso del tool.
+
 `assets/webapp.zip` va commiteado como **placeholder** (una página "aún no
 compilada"); generar el build real y empaquetarlo:
 ```bash

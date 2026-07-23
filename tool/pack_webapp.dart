@@ -23,6 +23,15 @@ Future<void> main() async {
   }
 
   const outputPath = 'assets/webapp.zip';
+
+  // El propio zip declarado en pubspec acaba dentro del build web
+  // (build/web/assets/assets/webapp.zip): si no se quita antes de empaquetar,
+  // cada ciclo build+pack anida el zip del ciclo anterior y el fichero crece
+  // como bola de nieve (llegó a 190 MB). La webapp nunca lo lee — solo lo
+  // sirve el móvil — así que se elimina del build antes de comprimir.
+  final nested = File('${buildWeb.path}/assets/assets/webapp.zip');
+  if (nested.existsSync()) nested.deleteSync();
+
   final encoder = ZipFileEncoder();
   await encoder.zipDirectoryAsync(buildWeb, filename: outputPath);
 
