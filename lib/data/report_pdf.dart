@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -66,20 +67,7 @@ Future<File> buildReportPdf(ReportData data) async {
 
   // --- Página dashboard (portada personalizable) ---
   if (o.dashboardPage) {
-    // resolveCoverCards (no effectiveCoverCards) para que la portada no salga
-    // con solo el encabezado cuando las tarjetas elegidas no aplican al flujo o
-    // no hay datos: en ese caso recae en las de por defecto.
-    final cards = resolveCoverCards(data);
-    final kpiTiles = [
-      for (final key in cards)
-        if (_kpiCoverKeys.contains(key))
-          if (_kpiTileFor(key, data) case final w?) w,
-    ];
-    final blocks = [
-      for (final key in cards)
-        if (!_kpiCoverKeys.contains(key))
-          if (_blockFor(key, data, pie) case final w?) w,
-    ];
+    final content = buildCoverWidgets(data, pie, df);
     doc.addPage(
       pw.Page(
         theme: theme,
@@ -87,12 +75,7 @@ Future<File> buildReportPdf(ReportData data) async {
         margin: const pw.EdgeInsets.fromLTRB(32, 32, 32, 32),
         build: (ctx) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            _banner(o, df),
-            pw.SizedBox(height: 18),
-            if (kpiTiles.isNotEmpty) _kpiGridFrom(kpiTiles),
-            for (final b in blocks) ...[pw.SizedBox(height: 20), b],
-          ],
+          children: content,
         ),
       ),
     );
@@ -330,6 +313,38 @@ pw.Widget _cardRow(List<pw.Widget> cards) {
   );
 }
 
+/// Widgets de la portada dashboard (banner + rejilla de KPIs + bloques), en el
+/// orden en que se apilan en la página. Expuesto (con [df] inyectable) para el
+/// test de regresión que comprueba que **de verdad se pintan dentro de la
+/// página**: la portada estuvo saliendo con solo el banner porque la rejilla
+/// usaba `CrossAxisAlignment.stretch` dentro de una `Column` (altura sin
+/// acotar → constraints infinitas → todo lo posterior desaparecía en
+/// silencio), y ningún test de "el PDF no está vacío" lo detectaba.
+@visibleForTesting
+List<pw.Widget> buildCoverWidgets(
+    ReportData data, pw.Widget? pie, DateFormat df) {
+  // resolveCoverCards (no effectiveCoverCards) para que la portada no salga
+  // con solo el encabezado cuando las tarjetas elegidas no aplican al flujo o
+  // no hay datos: en ese caso recae en las de por defecto.
+  final cards = resolveCoverCards(data);
+  final kpiTiles = [
+    for (final key in cards)
+      if (_kpiCoverKeys.contains(key))
+        if (_kpiTileFor(key, data) case final w?) w,
+  ];
+  final blocks = [
+    for (final key in cards)
+      if (!_kpiCoverKeys.contains(key))
+        if (_blockFor(key, data, pie) case final w?) w,
+  ];
+  return [
+    _banner(data.options, df),
+    pw.SizedBox(height: 18),
+    if (kpiTiles.isNotEmpty) _kpiGridFrom(kpiTiles),
+    for (final b in blocks) ...[pw.SizedBox(height: 20), b],
+  ];
+}
+
 /// Claves de tarjeta de portada que van en la rejilla de KPIs (el resto son
 /// gráficos/bloques de análisis a ancho completo, vía [_blockFor]).
 const _kpiCoverKeys = {
@@ -446,10 +461,14 @@ pw.Widget _kpiGridFrom(List<pw.Widget> tiles) {
       }
       if (j != 2) cells.add(pw.SizedBox(width: 12));
     }
+    // ⚠️ Nunca `CrossAxisAlignment.stretch` aquí: esta fila vive dentro de la
+    // `Column` de la portada, cuyos hijos se miden con altura sin acotar; con
+    // stretch, package:pdf impone a las celdas minHeight = maxHeight = ∞ y la
+    // rejilla (y todo lo que viene detrás) deja de pintarse sin ningún error.
     rows.add(pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 12),
       child: pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: cells),
+          crossAxisAlignment: pw.CrossAxisAlignment.start, children: cells),
     ));
   }
   return pw.Column(children: rows);
@@ -651,14 +670,25 @@ pw.Widget _barBlock(ReportData data) {
   if (maxV <= 0) maxV = 1;
   final top = maxV.ceilToDouble();
 
-  final labels = [for (final r in shown) _shortLabel(r.label)];
+  // Con un solo periodo, el eje X de `FixedAxis` queda con rango 0..0 y su
+  // interpolación divide por cero: en debug salta la aserción `!value.isNaN`
+  // de `PdfNum` y en release (sin aserciones) el NaN se escribe en el flujo
+  // de contenido del PDF, dejando la página en blanco en el visor. Se centra
+  // el único periodo entre dos etiquetas vacías para dar anchura al eje.
+  final single = shown.length == 1;
+  final labels = [
+    if (single) '',
+    for (final r in shown) _shortLabel(r.label),
+    if (single) '',
+  ];
+  final dx = single ? 1.0 : 0.0;
   final incomePts = [
     for (var i = 0; i < shown.length; i++)
-      pw.PointChartValue(i.toDouble(), eur(shown[i].income))
+      pw.PointChartValue(i + dx, eur(shown[i].income))
   ];
   final expensePts = [
     for (var i = 0; i < shown.length; i++)
-      pw.PointChartValue(i.toDouble(), eur(shown[i].expense))
+      pw.PointChartValue(i + dx, eur(shown[i].expense))
   ];
 
   final datasets = <pw.Dataset>[

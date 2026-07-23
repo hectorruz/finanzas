@@ -673,6 +673,20 @@ el móvil** y el navegador solo descarga el fichero.
   de `package:pdf` no traen el glifo `€`.
 - Cuidado con la portada vacía: si las tarjetas elegidas no aplican al flujo o no
   hay datos, hay que degradar con gracia (fue el bug de `f398cb5`).
+- **Dos trampas de render de `package:pdf` que dejaron páginas en blanco sin
+  ningún error** (ambas con test de regresión en `report_generation_test.dart`):
+  1. **Nada de `CrossAxisAlignment.stretch` en filas dentro de la `Column` de la
+     portada**: los hijos de esa `Column` se miden con altura sin acotar, y con
+     stretch el paquete impone a las celdas `minHeight = maxHeight = ∞` — la
+     rejilla de KPIs y todo lo posterior dejaba de pintarse (portada solo con el
+     banner). La portada se construye en `buildCoverWidgets` (expuesta
+     `@visibleForTesting` justo para poder afirmar que sus cajas de layout son
+     finitas tras `save()`).
+  2. **`FixedAxis` con un solo valor divide por cero** (rango 0..0 → NaN): un
+     informe de un solo periodo (p. ej. "Este mes" con granularidad mensual)
+     reventaba la aserción de `PdfNum` en debug y en release escribía `NaN` en el
+     flujo de contenido — el visor mostraba esa página en blanco. `_barBlock`
+     centra el único periodo entre dos etiquetas vacías para dar anchura al eje.
 
 ### Bloqueo y privacidad de pantalla
 
